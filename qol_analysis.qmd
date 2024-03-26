@@ -1,0 +1,199 @@
+---
+title: "Asian American Quality of Life: Analysis"
+author: "Miguel Fudolig, Luke Cho, Lawrence Kim, Boya Liu"
+format: html
+---
+
+
+```{r, output=F}
+library(tidyverse)
+library(ggplot2)
+library(lavaan)
+library(car)
+```
+
+# Data set  
+
+This data set is from the 2015 Asian American Quality of Life survey. Participants are from Austin, Texas.
+
+## Input data set
+
+
+```{r}
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x)))
+
+qol |> DT::datatable()
+```
+There are 2,609 responses, some with missing data.
+
+
+
+# Summary statistics
+
+### Gender
+
+```{r}
+qol |> group_by(`Gender`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+### Age
+
+```{r}
+qol |> filter(!is.na(Age)) |> summarize(age=mean(Age),SD=sd(Age),min=min(Age),max=max(Age))
+```
+
+### Ethnicity
+
+```{r}
+qol |> group_by(Ethnicity) |> summarize(n=n()) |> mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Marital Status
+
+```{r}
+qol |> group_by(`Marital Status`) |> summarize(n=n()) |> mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Living Alone
+
+```{r}
+qol |> mutate(alone=if_else(`No One`==0,"With Others","Alone")) |>
+  mutate(alone=factor(alone, levels=c("Alone","With Others"))) |> 
+  group_by(alone) |> 
+  summarize(n=n()) |> 
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Religion
+
+```{r}
+qol |> group_by(Religion) |> summarize(n=n()) |> mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Employment
+
+```{r}
+qol |> mutate(`Full Time Employment`= ifelse(`Full Time Employment`==0,"No","Yes")) |> 
+                group_by(`Full Time Employment`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### US Born
+
+```{r}
+qol |>group_by(`US Born`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Duration
+
+```{r}
+qol |> filter(!is.na(`Duration of Residency`)) |> 
+  summarize(mean=mean(`Duration of Residency`), SD = sd(`Duration of Residency`))
+```
+
+### English Speaking and Difficulty
+
+#### Primary Speakers
+
+1 = Primary Speaker, 0 = non-primary speaker
+```{r}
+qol |> group_by(`Primary Language`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+#### Profiency
+```{r}
+qol |> group_by(`English Speaking`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+```{r}
+qol |> group_by(`English Difficulties`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Familiarity with America and Ethnic Origin
+
+```{r}
+qol |> group_by(`Familiarity with America`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+```{r}
+qol |> group_by(`Familiarity with Ethnic Origin`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+Comparing Familiarity with Ethnic Origin and America,
+```{r}
+qol |> group_by(`Familiarity with Ethnic Origin`,`Familiarity with America`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+#### Identifying to the ethnic community
+
+```{r}
+qol |> group_by(`Identify Ethnically`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+#### Belonging to the ethnic community
+
+```{r}
+qol |> group_by(`Belonging`) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+#### Perceived Discrimination
+
+```{r}
+qol |> group_by(Discrimination) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+### Income
+
+```{r}
+qol |> group_by(Income) |> summarize(n=n()) |>
+  mutate(pct = n/sum(n)*100) |> 
+  arrange(desc(n))
+```
+
+## Analysis
+
+### Income
+
+#### Source of Information association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(Family,Income,Ethnicity) %>% filter(complete.cases(.)) |> 
+  filter(Family %in%c("Yes","No")) |>  
+  mutate(Family=droplevels(Family)) 
+glm(Family~Income+Ethnicity,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Close Friends association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Close Friends`,Income,Ethnicity) %>% filter(complete.cases(.)) |> 
+  group_by(`Close Friends`,Income,Ethnicity) |>  summarize(n=n())
+corr_table <- xtabs(n~ `Close Friends` +Income + Ethnicity, data=qol_1)
+#corr_table
+mantelhaen.test(corr_table)
+```
