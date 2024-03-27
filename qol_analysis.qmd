@@ -1,7 +1,11 @@
 ---
 title: "Asian American Quality of Life: Analysis"
 author: "Miguel Fudolig, Luke Cho, Lawrence Kim, Boya Liu"
-format: html
+format:
+  html:
+    toc: true
+    html-math-method: katex
+    css: styles.css
 ---
 
 
@@ -20,12 +24,14 @@ This data set is from the 2015 Asian American Quality of Life survey. Participan
 
 
 ```{r}
-qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x)))
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
+  mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
+         `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
+         Ethnicity = relevel(Ethnicity,ref="Chinese"))
 
 qol |> DT::datatable()
 ```
 There are 2,609 responses, some with missing data.
-
 
 
 # Summary statistics
@@ -41,6 +47,9 @@ qol |> group_by(`Gender`) |> summarize(n=n()) |>
 
 ```{r}
 qol |> filter(!is.na(Age)) |> summarize(age=mean(Age),SD=sd(Age),min=min(Age),max=max(Age))
+qol |> filter(Age >= 50) |> summarize (n=n())
+qol |> filter(Age >= 65) |> summarize (n=n(), median=quantile(Age,0.5))
+
 ```
 
 ### Ethnicity
@@ -180,10 +189,10 @@ qol |> group_by(Income) |> summarize(n=n()) |>
 #### Source of Information association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(Family,Income,Ethnicity) %>% filter(complete.cases(.)) |> 
+qol_1 <- qol |> select(Family,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.)) |> 
   filter(Family %in%c("Yes","No")) |>  
   mutate(Family=droplevels(Family)) 
-glm(Family~Income+Ethnicity,data=qol_1,family="binomial") -> mod1
+glm(Family~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 ```
@@ -191,9 +200,293 @@ car::Anova(mod1)
 #### Source of Information: Close Friends association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Close Friends`,Income,Ethnicity) %>% filter(complete.cases(.)) |> 
-  group_by(`Close Friends`,Income,Ethnicity) |>  summarize(n=n())
-corr_table <- xtabs(n~ `Close Friends` +Income + Ethnicity, data=qol_1)
-#corr_table
-mantelhaen.test(corr_table)
+qol_1 <- qol |> select(`Close Friend`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Close Friend`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Acquaintances association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(Acquaintances,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(Acquaintances~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Health professionals association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Heal Professionals`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Heal Professionals`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Mobile apps association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Mobile Apps`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Mobile Apps`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Social Networks association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Social Networks`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Social Networks`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Email association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(Email,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(Email~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+
+#### Source of Information: Online Communities association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Online Communities`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Online Communities`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+
+#### Source of Information: Health Website association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> select(`Health Website`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Health Website`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Other sources of information
+
+```{r}
+qol |> select(`Health Info Discription`) |> group_by(`Health Info Discription`) |> summarize(n=n())
+```
+
+
+### income: Only people above age 50
+
+#### Source of Information association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> filter(Age >=50) |> 
+  select(Family,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.)) |> 
+  filter(Family %in%c("Yes","No")) |>  
+  mutate(Family=droplevels(Family)) 
+glm(Family~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Close Friends association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>filter(Age >=50) |>
+  select(`Close Friend`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Close Friend`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Acquaintances association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>filter(Age >=50) |>
+  select(Acquaintances,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(Acquaintances~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+```
+
+#### Source of Information: Health professionals association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> filter(Age >=50) |>
+  select(`Heal Professionals`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Heal Professionals`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Mobile apps association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>filter(Age >=50) |>
+  select(`Mobile Apps`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Mobile Apps`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Social Networks association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>
+  filter(Age >=50) |>
+  select(`Social Networks`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Social Networks`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Source of Information: Email association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |> filter(Age >=50) |>
+  select(Email,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(Email~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+
+#### Source of Information: Online Communities association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>
+  filter(Age >=50) |>
+  select(`Online Communities`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Online Communities`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+
+#### Source of Information: Health Website association with income after controlling for ethnicity.
+
+```{r}
+qol_1 <- qol |>filter(Age >=50) |>
+  select(`Health Website`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Health Website`~Income+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+```
+
+#### Other sources of information
+
+```{r}
+qol |> filter(Age >=50) |> select(`Health Info Discription`) |> group_by(`Health Info Discription`) |> summarize(n=n())
+```
+
+
+### Health Care Access and Utilization
+
+We will use a model comparison approach to determine whether accounting for Asian ethnicity will improve model performance. The model of choice will be logistic regression for the following response variables: Physical check up, dental check up, urgent care, and folk medicine.
+
+#### Physical check up
+
+```{r}
+mod2 <- glm(`Physical Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
+            data=qol,
+            family="binomial")
+
+mod3 <- glm(`Physical Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance` + Ethnicity,
+            data=qol,
+            family="binomial")
+summary(mod2)
+car::vif(mod2)
+car::Anova(mod2) %>% round(3)
+
+summary(mod3)
+car::vif(mod3)
+car::Anova(mod3) %>% round(3)
+
+anova(mod2,mod3,test="LRT")
+data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_mod2)
+```
+The ethnicity model has a lower BIC and residual deviance, which implies better model performance compared to the model without the ethnicity included.
+
+#### Dental check up
+
+```{r}
+mod2 <- glm(`Dentist Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
+            data=qol,
+            family="binomial")
+
+mod3 <- glm(`Dentist Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance` + Ethnicity,
+            data=qol,
+            family="binomial")
+summary(mod2)
+car::vif(mod2)
+car::Anova(mod2) %>% round(3)
+
+summary(mod3)
+car::vif(mod3)
+car::Anova(mod3) %>% round(3)
+
+anova(mod2,mod3,test="LRT")
+data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_mod2)
+```
+The ethnicity model has a lower BIC and residual deviance, which implies better model performance compared to the model without the ethnicity included.
+
+
+#### Urgent Care
+
+```{r}
+mod2 <- glm(`Urgentcare`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
+            data=qol,
+            family="binomial")
+
+mod3 <- glm(`Urgentcare`~Income + Age + Gender + `Health Insurance` + `Dental Insurance` + Ethnicity,
+            data=qol,
+            family="binomial")
+summary(mod2)
+car::vif(mod2)
+car::Anova(mod2) %>% round(3)
+
+summary(mod3)
+car::vif(mod3)
+car::Anova(mod3) %>% round(3)
+
+anova(mod2,mod3,test="LRT")
+data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_mod2)
+```
+The ethnicity model has a lower residual deviance but higher BIC, which implies that there is no evidence of better model performance when ethnicity is added to the model.
+
+#### Folk medicine
+
+```{r}
+mod2 <- glm(Folkmedicine~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
+            data=qol,
+            family="binomial")
+
+mod3 <- glm(Folkmedicine~Income + Age + Gender + `Health Insurance` + `Dental Insurance` + Ethnicity,
+            data=qol,
+            family="binomial")
+summary(mod2)
+car::vif(mod2)
+car::Anova(mod2) %>% round(3)
+
+summary(mod3)
+car::vif(mod3)
+car::Anova(mod3) %>% round(3)
+
+anova(mod2,mod3,test="LRT")
+data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_mod2)
 ```
