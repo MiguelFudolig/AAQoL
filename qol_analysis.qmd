@@ -182,11 +182,11 @@ qol |> group_by(Income) |> summarize(n=n()) |>
   arrange(desc(n))
 ```
 
-## Analysis
+# Analysis
 
-### Income
+## Income
 
-#### Source of Information association with income after controlling for ethnicity.
+### Source of Information association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(Family,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.)) |> 
@@ -197,7 +197,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Close Friends association with income after controlling for ethnicity.
+### Source of Information: Close Friends association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Close Friend`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -206,7 +206,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Acquaintances association with income after controlling for ethnicity.
+### Source of Information: Acquaintances association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(Acquaintances,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -215,7 +215,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Health professionals association with income after controlling for ethnicity.
+### Source of Information: Health professionals association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Heal Professionals`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -225,7 +225,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Mobile apps association with income after controlling for ethnicity.
+### Source of Information: Mobile apps association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Mobile Apps`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -235,7 +235,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Social Networks association with income after controlling for ethnicity.
+### Source of Information: Social Networks association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Social Networks`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -245,7 +245,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Email association with income after controlling for ethnicity.
+### Source of Information: Email association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(Email,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -256,7 +256,7 @@ car::vif(mod1)
 ```
 
 
-#### Source of Information: Online Communities association with income after controlling for ethnicity.
+### Source of Information: Online Communities association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Online Communities`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -267,7 +267,7 @@ car::vif(mod1)
 ```
 
 
-#### Source of Information: Health Website association with income after controlling for ethnicity.
+### Source of Information: Health Website association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> select(`Health Website`,Income,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
@@ -277,16 +277,16 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Other sources of information
+### Other sources of information
 
 ```{r}
 qol |> select(`Health Info Discription`) |> group_by(`Health Info Discription`) |> summarize(n=n())
 ```
 
 
-### income: Only people above age 50
+## income: Only people above age 50
 
-#### Source of Information association with income after controlling for ethnicity.
+### Source of Information association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> filter(Age >=50) |> 
@@ -298,7 +298,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Close Friends association with income after controlling for ethnicity.
+### Source of Information: Close Friends association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>filter(Age >=50) |>
@@ -308,7 +308,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Acquaintances association with income after controlling for ethnicity.
+### Source of Information: Acquaintances association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>filter(Age >=50) |>
@@ -318,7 +318,7 @@ summary(mod1)
 car::Anova(mod1)
 ```
 
-#### Source of Information: Health professionals association with income after controlling for ethnicity.
+### Source of Information: Health professionals association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> filter(Age >=50) |>
@@ -329,7 +329,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Mobile apps association with income after controlling for ethnicity.
+### Source of Information: Mobile apps association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>filter(Age >=50) |>
@@ -340,7 +340,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Social Networks association with income after controlling for ethnicity.
+### Source of Information: Social Networks association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>
@@ -352,7 +352,7 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Source of Information: Email association with income after controlling for ethnicity.
+### Source of Information: Email association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |> filter(Age >=50) |>
@@ -364,7 +364,7 @@ car::vif(mod1)
 ```
 
 
-#### Source of Information: Online Communities association with income after controlling for ethnicity.
+### Source of Information: Online Communities association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>
@@ -377,7 +377,7 @@ car::vif(mod1)
 ```
 
 
-#### Source of Information: Health Website association with income after controlling for ethnicity.
+### Source of Information: Health Website association with income after controlling for ethnicity.
 
 ```{r}
 qol_1 <- qol |>filter(Age >=50) |>
@@ -388,18 +388,18 @@ car::Anova(mod1)
 car::vif(mod1)
 ```
 
-#### Other sources of information
+### Other sources of information
 
 ```{r}
 qol |> filter(Age >=50) |> select(`Health Info Discription`) |> group_by(`Health Info Discription`) |> summarize(n=n())
 ```
 
 
-### Health Care Access and Utilization
+## Health Care Access and Utilization
 
 We will use a model comparison approach to determine whether accounting for Asian ethnicity will improve model performance. The model of choice will be logistic regression for the following response variables: Physical check up, dental check up, urgent care, and folk medicine.
 
-#### Physical check up
+### Physical check up
 
 ```{r}
 mod2 <- glm(`Physical Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
@@ -422,7 +422,7 @@ data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_m
 ```
 The ethnicity model has a lower BIC and residual deviance, which implies better model performance compared to the model without the ethnicity included.
 
-#### Dental check up
+### Dental check up
 
 ```{r}
 mod2 <- glm(`Dentist Check-up`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
@@ -446,7 +446,7 @@ data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_m
 The ethnicity model has a lower BIC and residual deviance, which implies better model performance compared to the model without the ethnicity included.
 
 
-#### Urgent Care
+### Urgent Care
 
 ```{r}
 mod2 <- glm(`Urgentcare`~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
@@ -469,7 +469,7 @@ data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_m
 ```
 The ethnicity model has a lower residual deviance but higher BIC, which implies that there is no evidence of better model performance when ethnicity is added to the model.
 
-#### Folk medicine
+### Folk medicine
 
 ```{r}
 mod2 <- glm(Folkmedicine~Income + Age + Gender + `Health Insurance` + `Dental Insurance`,
