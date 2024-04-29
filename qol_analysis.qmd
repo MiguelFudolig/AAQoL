@@ -203,6 +203,75 @@ qol |> group_by(Income_median) |> summarize(n=n()) |>
  
 # Analysis
 
+```{r,output=F}
+ps <- function(x,dataset=qol){
+  x <- enquo(x)
+  dataset |> group_by(!!x) |> 
+    summarize(n=n()) |> 
+    mutate(pct=n/sum(n)*100)
+}
+```
+## Sources of Information summary statistics;
+
+### Family
+
+```{r}
+ps(Family)
+```
+### Close Friends
+
+```{r}
+ps(`Close Friend`)
+```
+
+### Acquaintances
+
+```{r}
+ps(`Acquaintances`)
+```
+
+### Health Professionals
+
+```{r}
+ps(`Heal Professionals`)
+```
+
+### Mobile Apps
+
+```{r}
+ps(`Mobile Apps`)
+```
+
+### Social Networks
+
+```{r}
+ps(`Social Networks`)
+
+```
+### Online Communities
+
+```{r}
+ps(`Online Communities`)
+```
+
+
+### Health Websites
+
+```{r}
+ps(`Health Website`)
+```
+
+
+### Online sources
+
+```{r}
+qol |> mutate(online_source = 1*(`Health Website`=="Yes" |
+                                   `Online Communities`=="Yes" | 
+                                   `Social Networks`=="Yes" | 
+                                   `Email`=="Yes")) |> 
+group_by(online_source) |> summarize(n=n()) |> mutate(pct=n/sum(n)*100)
+```
+
 ## Income
 
 ### Source of Information association with income after controlling for ethnicity.
@@ -307,101 +376,165 @@ car::vif(mod1)
 qol |> select(`Health Info Discription`) |> group_by(`Health Info Discription`) |> summarize(n=n())
 ```
 
-## DIchotomized Income
+## DIchotomized Income and Age
 
 ### Source of Information association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(Family,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.)) |> 
+qol_1 <- qol |> select(Family,Income_median,Ethnicity,`English Difficulties`,Age) %>% filter(complete.cases(.)) |> 
   filter(Family %in%c("Yes","No")) |>  
   mutate(Family=droplevels(Family)) 
-glm(Family~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+glm(Family~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
+
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 
 ### Source of Information: Close Friends association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Close Friend`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Close Friend`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(`Close Friend`,Income_median,Ethnicity,`English Difficulties`,Age) %>% filter(complete.cases(.))
+glm(`Close Friend`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 ### Source of Information: Acquaintances association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(Acquaintances,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(Acquaintances~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(Acquaintances,Income_median,Ethnicity,`English Difficulties`,Age) %>% filter(complete.cases(.))
+glm(Acquaintances~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 ### Source of Information: Health professionals association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Heal Professionals`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Heal Professionals`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(`Heal Professionals`,Income_median,Ethnicity,`English Difficulties`,Age) %>% filter(complete.cases(.))
+glm(`Heal Professionals`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 ### Source of Information: Mobile apps association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Mobile Apps`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Mobile Apps`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(`Mobile Apps`,Income_median,Ethnicity,`English Difficulties`,Age) %>% filter(complete.cases(.))
+glm(`Mobile Apps`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 ### Source of Information: Social Networks association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Social Networks`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Social Networks`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(Age,`Social Networks`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Social Networks`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 ### Source of Information: Email association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(Email,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(Email~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(Age,Email,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(Email~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 
 ### Source of Information: Online Communities association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Online Communities`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Online Communities`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(Age,`Online Communities`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Online Communities`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
 
 ### Source of Information: Health Website association with income after controlling for ethnicity.
 
 ```{r}
-qol_1 <- qol |> select(`Health Website`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
-glm(`Health Website`~Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+qol_1 <- qol |> select(Age,`Health Website`,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+glm(`Health Website`~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
 summary(mod1)
 car::Anova(mod1)
 car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
 ```
 
+### Source of Information: Online resources association with age andincome after controlling for ethnicity.
 
+```{r}
+qol_1 <- qol |> mutate(online_source = 1*(`Health Website`=="Yes" |
+                                   `Online Communities`=="Yes" | 
+                                   `Social Networks`=="Yes" | 
+                                   `Email`=="Yes")) |> 
+  select(Age,online_source,Income_median,Ethnicity,`English Difficulties`) %>% filter(complete.cases(.))
+
+glm(as.factor(online_source)~Age+Income_median+Ethnicity+`English Difficulties`,data=qol_1,family="binomial") -> mod1
+summary(mod1)
+car::Anova(mod1)
+car::vif(mod1)
+coef(mod1) |> exp() -> OR
+confint(mod1) |> exp() -> CI
+CI
+
+data.frame(estimate=OR,LCL = CI[,1], UCL = CI[,2])
+```
 
 ## income: Only people above age 50
 
