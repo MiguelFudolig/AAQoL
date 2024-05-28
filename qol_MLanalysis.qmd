@@ -1,0 +1,1560 @@
+---
+title: "2015 AAQoL: Machine Learning Approaches"
+author: "Miguel Fudolig, Luke Cho, Lawrence Kim, Boya Liu"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+---
+
+```{r, output=F}
+library(tidyverse)
+library(ggplot2)
+library(lavaan)
+library(car)
+```
+
+
+# Data set  
+
+This data set is from the 2015 Asian American Quality of Life survey. Participants are from Austin, Texas.
+
+## Input data set
+
+
+```{r}
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
+  mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
+         `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
+         Ethnicity = relevel(Ethnicity,ref="Chinese"))
+
+qol |> DT::datatable()
+```
+
+```{r,output=F}
+#| echo: FALSE
+ps <- function(x,dataset=qol){
+  x <- rlang::enquo(x)
+  dataset |> group_by(!!x) |> 
+    summarize(n=n()) |> 
+    mutate(pct=n/sum(n)*100)
+}
+```
+There are 2,609 responses, some with missing data.
+
+
+# Machine Learning Classifications
+
+We are going to analyze the prediction accuracy of different machine learning algorithms in predicting the source of health information, healthcare utilization outcomes, and insurance.
+
+We will consider the following algorithms:
+- Random Forest
+- Logistic Regression
+
+
+# Source of Information: Family
+
+```{r}
+ps(Family)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
+  mutate(Family=droplevels(Family)) |> 
+  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(Family=="Yes")
+neg <- rfdata |> filter(Family=="No")
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$Family,positive="Yes")
+```
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$Family,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+set.seed(222)
+ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+
+train <- rfdata[ind==1,]
+test <- rfdata[ind==2,]
+
+randomForest::randomForest(Family~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$Family,positive="Yes")
+```
+#### Test Set
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$Family,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$Family,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$Family,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$Family,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$Family,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$Family,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+pROC::auc(rocobj_w)
+```
+
+
+
+
+
+# Source of Information: Health Professional
+
+```{r}
+ps(`Heal Professionals`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+set.seed(222)
+pos<- rfdata |> filter(`Heal Professionals`=="Yes")
+neg <- rfdata |> filter(`Heal Professionals`=="No")
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Heal Professionals`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Heal Professionals`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Heal Professionals`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Heal Professionals`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Heal Professionals`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Heal Professionals`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Heal Professionals`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Heal Professionals`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Heal Professionals`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Heal Professionals`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Heal Professionals`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Heal Professionals`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Heal Professionals`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+pROC::auc(rocobj_w)
+```
+
+
+
+
+
+# Health Insurance
+
+```{r}
+ps(`Health Insurance`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Health Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Health Insurance`=="Yes")
+neg <- rfdata |> filter(`Health Insurance`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Health Insurance`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Health Insurance`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Health Insurance`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Health Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Health Insurance`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Health Insurance`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Health Insurance`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Health Insurance`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Health Insurance`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Health Insurance`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Health Insurance`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Health Insurance`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Health Insurance`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Health Insurance`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+pROC::auc(rocobj_w)
+```
+
+
+# Dental Insurance
+
+```{r}
+ps(`Dental Insurance`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Dental Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Dental Insurance`=="Yes")
+neg <- rfdata |> filter(`Dental Insurance`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Dental Insurance`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Dental Insurance`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Dental Insurance`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Dental Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Dental Insurance`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Dental Insurance`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Dental Insurance`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Dental Insurance`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+
+
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Dental Insurance`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Dental Insurance`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Dental Insurance`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Dental Insurance`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Dental Insurance`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Dental Insurance`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+
+```
+
+
+#### AUROC 
+
+```{r}
+pROC::auc(rocobj_w)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+
+# Urgent Care utilization in the past 12 months
+
+```{r}
+ps(`Urgentcare`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Urgentcare`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Urgentcare`=="Yes")
+neg <- rfdata |> filter(`Urgentcare`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Urgentcare`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Urgentcare`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Urgentcare`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Urgentcare`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Urgentcare`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Urgentcare`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Urgentcare`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Urgentcare`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+
+Urgent care IS NOT really predicted well. Might as well just say "yes" to everything since accuracy is not significantly different from NIR.
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Urgentcare`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Urgentcare`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Urgentcare`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Urgentcare`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Urgentcare`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Urgentcare`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+pROC::auc(rocobj_w)
+```
+
+
+
+
+
+
+
+# Physical Checkup
+
+```{r}
+ps(`Physical Check-up`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Physical Check-up`=="Yes")
+neg <- rfdata |> filter(`Physical Check-up`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Physical Check-up`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Physical Check-up`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Physical Check-up`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Physical Check-up`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Physical Check-up`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Physical Check-up`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Physical Check-up`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+No change between accuracy and no information rate on the test set.
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Physical Check-up`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Physical Check-up`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Physical Check-up`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Physical Check-up`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Physical Check-up`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Physical Check-up`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+```
+#### AUROC
+```{r}
+pROC::auc(rocobj_w)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+
+
+# Dental Checkup
+
+```{r}
+ps(`Dentist Check-up`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Dentist Check-up`=="Yes")
+neg <- rfdata |> filter(`Dentist Check-up`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Dentist Check-up`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Dentist Check-up`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Dentist Check-up`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Dentist Check-up`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Dentist Check-up`,positive="Yes")
+```
+
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Dentist Check-up`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Dentist Check-up`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+Accuracy slightly decreased when ethnicity is added to the model, but AUC increased.
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Dentist Check-up`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Dentist Check-up`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Dentist Check-up`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Dentist Check-up`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Dentist Check-up`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Dentist Check-up`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+pROC::auc(rocobj_w)
+```
+
+
+
+
+
+
+
+# Folk Medicine
+
+```{r}
+ps(`Folkmedicine`)
+```
+
+## Random Forest
+
+### Without Ethnicity
+
+#### Training Set
+```{r}
+
+rfdata <- qol |> 
+  select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+pos<- rfdata |> filter(`Folkmedicine`=="Yes")
+neg <- rfdata |> filter(`Folkmedicine`==0)
+
+set.seed(222)
+ind_pos <- sample(2, nrow(pos), replace = TRUE, prob = c(0.7, 0.3))
+ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
+
+randomForest::randomForest(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+                           data=train,
+                           importance=TRUE) -> rf_wo
+print(rf_wo)
+```
+
+
+```{r}
+pred_noeth <- predict(rf_wo,train)
+caret::confusionMatrix(pred_noeth,train$`Folkmedicine`,positive="Yes")
+```
+
+
+
+
+#### Test set
+
+```{r}
+pred_noeth <- predict(rf_wo,test)
+caret::confusionMatrix(pred_noeth,test$`Folkmedicine`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_noeth <- predict(rf_wo,test,type="prob")
+rocobj_wo <-pROC::roc(test$`Folkmedicine`,pred_noeth[,2])
+
+pROC::ggroc(rocobj_wo)
+```
+
+
+### With Ethnicity
+
+#### Training Set
+```{r}
+
+# rfdata <- qol |>
+#   select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   na.omit() |> 
+#   rename(Employment=`Full Time Employment`,
+#          EnglishSpeak=`English Speaking`,
+#          EnglishDiff=`English Difficulties`)
+# 
+# set.seed(222)
+# ind <- sample(2, nrow(rfdata), replace = TRUE, prob = c(0.7, 0.3))
+# 
+# train <- rfdata[ind==1,]
+# test <- rfdata[ind==2,]
+
+randomForest::randomForest(`Folkmedicine`~. ,data=train,
+                           importance=TRUE) -> rf_w
+print(rf_w)
+```
+
+```{r}
+pred_eth <- predict(rf_w,train)
+caret::confusionMatrix(pred_eth,train$`Folkmedicine`,positive="Yes")
+```
+#### Test Set
+```{r}
+pred_eth <- predict(rf_w,test)
+caret::confusionMatrix(pred_eth,test$`Folkmedicine`,positive="Yes")
+```
+
+#### ROC Curve
+
+```{r}
+pred_eth <- predict(rf_w,test,type="prob")
+rocobj <-pROC::roc(test$`Folkmedicine`,pred_eth[,2])
+
+pROC::ggroc(list(NoEthnicity=rocobj_wo,Ethnicity=rocobj))
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj)
+pROC::auc(rocobj_wo)
+```
+
+#### Variable Importance
+
+```{r}
+randomForest::varImpPlot(rf_w)
+randomForest::importance(rf_w)
+```
+
+Accuracy slightly decreased when ethnicity is added to the model.
+
+
+
+## Logistic Regression
+
+### No ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Folkmedicine`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Folkmedicine`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_wo <-pROC::roc(test$`Folkmedicine`,predicted_probs)
+
+pROC::ggroc(rocobj_wo)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
+### With ethnicity
+
+#### Training Set
+```{r}
+mod1 <- glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+
+predict(mod1,train,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,train$`Folkmedicine`,positive="Yes")
+```
+#### Test Set
+```{r}
+predict(mod1,test,type="response") -> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$`Folkmedicine`,positive="Yes")
+```
+#### ROC
+
+```{r}
+rocobj_w <-pROC::roc(test$`Folkmedicine`,predicted_probs)
+
+pROC::ggroc(rocobj_w)
+```
+
+#### AUROC
+
+```{r}
+pROC::auc(rocobj_w)
+pROC::auc(rocobj_wo)
+```
+
+
+
+
