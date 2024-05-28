@@ -198,16 +198,16 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1w <- glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
-predict(mod1,train,type="response") -> predicted_probs
+predict(mod1w,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
 
 caret::confusionMatrix(pred_noeth,train$Family,positive="Yes")
 ```
 #### Test Set
 ```{r}
-predict(mod1,test,type="response") -> predicted_probs
+predict(mod1w,test,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
 
 caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
@@ -218,10 +218,35 @@ caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
 rocobj_w <-pROC::roc(test$Family,predicted_probs)
 
 pROC::ggroc(rocobj_w)
+```
+
+#### AUROC
+```{r}
 pROC::auc(rocobj_w)
 ```
 
+## Logistic Regression (ANOVA)
 
+```{r}
+glm(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
 
 
 
@@ -411,6 +436,30 @@ pROC::auc(rocobj_w)
 
 
 
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
+
 # Health Insurance
 
 ```{r}
@@ -593,6 +642,30 @@ pROC::ggroc(rocobj_w)
 pROC::auc(rocobj_w)
 ```
 
+
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
 
 # Dental Insurance
 
@@ -788,6 +861,30 @@ pROC::auc(rocobj_wo)
 
 
 
+
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
 
 # Urgent Care utilization in the past 12 months
 
@@ -988,6 +1085,32 @@ pROC::auc(rocobj_w)
 
 
 
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
+
+
+
 # Physical Checkup
 
 ```{r}
@@ -1179,6 +1302,29 @@ pROC::auc(rocobj_wo)
 
 
 
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
+
 # Dental Checkup
 
 ```{r}
@@ -1366,6 +1512,29 @@ pROC::auc(rocobj_w)
 
 
 
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
 
 # Folk Medicine
 
@@ -1558,3 +1727,31 @@ pROC::auc(rocobj_wo)
 
 
 
+
+
+
+
+
+
+## Logistic Regression (ANOVA)
+
+```{r}
+glm(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+```
+
+### ANOVA analysis
+```{r}
+summary(mod1w)
+car::Anova(mod1w)
+car::vif(mod1w)
+
+anova(mod1,mod1w,test="LRT")
+```
+
+### AIC/BIC values
+
+```{r}
+data.frame(AIC_wo = AIC(mod1), AIC_w=AIC(mod1w))
+data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
+```
