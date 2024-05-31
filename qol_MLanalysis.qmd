@@ -13,6 +13,8 @@ library(tidyverse)
 library(ggplot2)
 library(lavaan)
 library(car)
+library(glmnet)
+library(randomForestSRC)
 ```
 
 
@@ -27,7 +29,17 @@ This data set is from the 2015 Asian American Quality of Life survey. Participan
 qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
   mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
          `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
-         Ethnicity = relevel(Ethnicity,ref="Chinese"))
+         Ethnicity = relevel(Ethnicity,ref="Chinese")) |> 
+  mutate(Income_median = case_match(Income,"$0 - $9,999"~"Below",
+                                         "$10,000 - $19,999" ~"Below",
+                                         "$20,000 - $29,999"~"Below",
+                                         "$30,000 - $39,999"~"Below",
+                                         "$40,000 - $49,999"~"Below",
+                                         "$50,000 - $59,999"~"Below",
+                                         "$60,000 - $69,999"~"Above",
+                                         "$70,000 and over"~"Above",
+                                          .default=Income)) |> 
+  mutate(Income_median = factor(Income_median, levels=c("Below","Above")))
 
 qol |> DT::datatable()
 ```
@@ -67,7 +79,7 @@ ps(Family)
 ```{r}
 rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
   mutate(Family=droplevels(Family)) |> 
-  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -84,7 +96,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(Family~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -168,9 +180,9 @@ randomForest::importance(rf_w)
 
 #### Training Set
 ```{r}
-mod1 <- glm(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
-
+mod1 <- glm(Family~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial)
 predict(mod1,train,type="response") -> predicted_probs
+
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
 
 caret::confusionMatrix(pred_noeth,train$Family,positive="Yes")
@@ -198,7 +210,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1w <- glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1w <- glm(Family~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1w,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
@@ -225,11 +237,54 @@ pROC::ggroc(rocobj_w)
 pROC::auc(rocobj_w)
 ```
 
+## 10-fold cross validated logistic regression
+
+### Without Ethnicity
+```{r}
+x <- model.matrix(Family~Age+Gender+Religion + Income_median + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train)
+
+mod <- cv.glmnet(x,train$Family,family="binomial",type.measure="class")
+
+plot(mod)
+print(mod)
+
+x_test <- model.matrix(Family~Age+Gender+Religion + Income_median + Income_median +Employment+EnglishSpeak+EnglishDiff,data=test)
+
+predict(mod,newx=x_test,type="response")-> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
+
+
+```
+
+### With Ethnicity
+
+```{r}
+x <- model.matrix(Family~Age+Ethnicity+Gender+Religion + Income_median + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train)
+
+mod <- cv.glmnet(x,train$Family,family="binomial",type.measure="class")
+
+plot(mod)
+print(mod)
+
+x_test <- model.matrix(Family~Age+Ethnicity+Gender+Religion + Income_median + Income_median +Employment+EnglishSpeak+EnglishDiff,data=test)
+
+predict(mod,newx=x_test,type="response")-> predicted_probs
+pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
+
+caret::confusionMatrix(pred_noeth,test$Family,positive="Yes")
+
+
+```
+
+
+
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(Family~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(Family~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(Family~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(Family~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -264,7 +319,7 @@ ps(`Heal Professionals`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -282,7 +337,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Heal Professionals`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -320,7 +375,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -379,7 +434,7 @@ randomForest::importance(rf_w)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Heal Professionals`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
@@ -409,7 +464,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "No") |> as.factor()
@@ -440,8 +495,8 @@ pROC::auc(rocobj_w)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Heal Professionals`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Heal Professionals`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Heal Professionals`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -466,6 +521,32 @@ data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
 ps(`Health Insurance`)
 ```
 
+## Imbalanced Random Forest (```randomForestSRC```)
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Health Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) 
+
+imb <- imbalanced(`Health Insurance` ~ Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame(),
+                    perf.type = "gmean")
+print(imb)
+
+
+imb_e <- imbalanced(`Health Insurance` ~ Ethnicity+Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame(),
+                    perf.type = "gmean")
+print(imb_e)
+
+get.imbalanced.performance(imb_e)
+plot(imb_e,plots.one.page = FALSE)
+```
+
+
 ## Random Forest
 
 ### Without Ethnicity
@@ -474,7 +555,7 @@ ps(`Health Insurance`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Health Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Health Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -491,7 +572,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Health Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -529,7 +610,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Health Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Health Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -589,7 +670,7 @@ randomForest::importance(rf_w)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Health Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -619,7 +700,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -647,8 +728,8 @@ pROC::auc(rocobj_w)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Health Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Health Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Health Insurance`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -681,7 +762,7 @@ ps(`Dental Insurance`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Dental Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Dental Insurance`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -698,7 +779,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Dental Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -736,7 +817,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Dental Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Dental Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -797,7 +878,7 @@ randomForest::importance(rf_w)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Dental Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -827,7 +908,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -866,8 +947,8 @@ pROC::auc(rocobj_wo)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Dental Insurance`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Dental Insurance`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Dental Insurance`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -892,6 +973,25 @@ data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
 ps(`Urgentcare`)
 ```
 
+## Imbalanced Random Forest (```randomForestSRC```)
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Urgentcare`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+imb <- imbalanced(`Urgentcare`~ Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame())
+print(imb)
+
+
+imb_e <- imbalanced(`Urgentcare` ~ Ethnicity+Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame())
+print(imb_e)
+```
 ## Random Forest
 
 ### Without Ethnicity
@@ -900,7 +1000,7 @@ ps(`Urgentcare`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Urgentcare`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Urgentcare`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -917,7 +1017,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Urgentcare`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -955,7 +1055,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Urgentcare`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Urgentcare`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -1026,7 +1126,7 @@ Urgent care IS NOT really predicted well. Might as well just say "yes" to everyt
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Urgentcare`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1056,7 +1156,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1089,8 +1189,8 @@ pROC::auc(rocobj_w)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Urgentcare`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Urgentcare`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Urgentcare`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -1117,6 +1217,30 @@ data.frame(BIC_wo = BIC(mod1), BIC_w=BIC(mod1w))
 ps(`Physical Check-up`)
 ```
 
+
+## Imbalanced Random Forest (```randomForestSRC```)
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`)
+
+imb <- imbalanced(`Physical Check-up` ~ Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame())
+print(imb)
+
+
+imb_e <- imbalanced(`Physical Check-up` ~ Ethnicity+Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame())
+print(imb_e)
+
+get.imbalanced.performance(imb_e)
+
+imb_e$importance
+```
 ## Random Forest
 
 ### Without Ethnicity
@@ -1125,7 +1249,7 @@ ps(`Physical Check-up`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -1142,7 +1266,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Physical Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -1180,7 +1304,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -1240,7 +1364,7 @@ No change between accuracy and no information rate on the test set.
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Physical Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1270,7 +1394,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1305,8 +1429,8 @@ pROC::auc(rocobj_wo)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Physical Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Physical Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Physical Check-up`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -1339,7 +1463,7 @@ ps(`Dentist Check-up`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -1356,7 +1480,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Dentist Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -1394,7 +1518,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -1454,7 +1578,7 @@ Accuracy slightly decreased when ethnicity is added to the model, but AUC increa
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Dentist Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1484,7 +1608,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1516,8 +1640,8 @@ pROC::auc(rocobj_w)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Dentist Check-up`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Dentist Check-up`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Dentist Check-up`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
@@ -1550,7 +1674,7 @@ ps(`Folkmedicine`)
 ```{r}
 
 rfdata <- qol |> 
-  select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+  select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -1567,7 +1691,7 @@ ind_neg <- sample(2, nrow(neg), replace = TRUE, prob = c(0.7, 0.3))
 train <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 test <- bind_rows(pos[ind_pos==2,],neg[ind_neg==2,])
 
-randomForest::randomForest(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff ,
+randomForest::randomForest(`Folkmedicine`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff ,
                            data=train,
                            importance=TRUE) -> rf_wo
 print(rf_wo)
@@ -1605,7 +1729,7 @@ pROC::ggroc(rocobj_wo)
 ```{r}
 
 # rfdata <- qol |>
-#   select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income, `English Speaking`, `English Difficulties`) %>%
+#   select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`) %>%
 #   na.omit() |> 
 #   rename(Employment=`Full Time Employment`,
 #          EnglishSpeak=`English Speaking`,
@@ -1665,7 +1789,7 @@ Accuracy slightly decreased when ethnicity is added to the model.
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Folkmedicine`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1695,7 +1819,7 @@ pROC::auc(rocobj_wo)
 
 #### Training Set
 ```{r}
-mod1 <- glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
+mod1 <- glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=train,family=binomial) 
 
 predict(mod1,train,type="response") -> predicted_probs
 pred_noeth<- ifelse(predicted_probs > 0.5, "Yes", "0") |> as.factor()
@@ -1736,8 +1860,8 @@ pROC::auc(rocobj_wo)
 ## Logistic Regression (ANOVA)
 
 ```{r}
-glm(`Folkmedicine`~Age+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
-glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
+glm(`Folkmedicine`~Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) -> mod1
+glm(`Folkmedicine`~Age+Ethnicity+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,data=rfdata,family=binomial) ->mod1w
 ```
 
 ### ANOVA analysis
