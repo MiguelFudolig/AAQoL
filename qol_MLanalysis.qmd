@@ -538,12 +538,24 @@ imb <- imbalanced(`Health Insurance` ~ Age+Gender+Religion + Income_median +Empl
 print(imb)
 
 
-imb_e <- imbalanced(`Health Insurance` ~ Ethnicity+Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance=T,data=rfdata |> as.data.frame(),
+imb_e <- imbalanced(`Health Insurance` ~ Ethnicity+Age+Gender+Religion + Income_median +Employment+EnglishSpeak+EnglishDiff,importance="permute",data=rfdata |> as.data.frame(),
                     perf.type = "gmean")
 print(imb_e)
 
 get.imbalanced.performance(imb_e)
-plot(imb_e,plots.one.page = FALSE)
+
+var_importance <- imb_e$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+  
+# Create ggplot for variable importance
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_minimal()
+  
+plot(importance_plot)
+
 ```
 
 
