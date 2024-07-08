@@ -67,7 +67,8 @@ ps(Family)
 rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
   mutate(Family=droplevels(Family)) |> 
   select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
-  na.omit() |> 
+  filter(!is.na(Family)) |> 
+  # na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
          EnglishDiff=`English Difficulties`) |> 
@@ -94,7 +95,50 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
 plot(importance_plot)
 ```
 
+## Training/Test set Variable Importance
 
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(Family=="Yes")
+neg <- rfdata |> filter(Family=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(Family ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
 
 # Source of Information: Health Professionals
 
@@ -130,7 +174,50 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
 plot(importance_plot)
 ```
 
+## Training/Test set Variable Importance
 
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Heal Professionals`=="Yes")
+neg <- rfdata |> filter(`Heal Professionals`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Heal Professionals` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
 
 # Health Insurance
 
@@ -171,6 +258,51 @@ plot(importance_plot)
 
 ```
 
+## Training/Test set Variable Importance
+
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Health Insurance`=="Yes")
+neg <- rfdata |> filter(`Health Insurance`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Health Insurance` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
+
 # Dental Insurance
 
 ```{r}
@@ -209,7 +341,50 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
 plot(importance_plot)
 
 ```
+## Training/Test set Variable Importance
 
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Dental Insurance`=="Yes")
+neg <- rfdata |> filter(`Dental Insurance`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Dental Insurance` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
 # Physical Checkup
 
 ```{r}
@@ -247,6 +422,51 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
   
 plot(importance_plot)
 
+```
+
+## Training/Test set Variable Importance
+
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Physical Check-up`=="Yes")
+neg <- rfdata |> filter(`Physical Check-up`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Physical Check-up` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
 ```
 
 # Dental Checkup
@@ -288,6 +508,51 @@ plot(importance_plot)
 
 ```
 
+## Training/Test set Variable Importance
+
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Dentist Check-up`=="Yes")
+neg <- rfdata |> filter(`Dentist Check-up`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Dentist Check-up` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
+
 # Urgent Care
 
 ```{r}
@@ -326,6 +591,52 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
 plot(importance_plot)
 
 ```
+
+## Training/Test set Variable Importance
+
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Urgentcare`=="Yes")
+neg <- rfdata |> filter(`Urgentcare`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Urgentcare`~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
+```
+
 # Folk Medicine
 
 ```{r}
@@ -363,4 +674,49 @@ importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importanc
   
 plot(importance_plot)
 
+```
+
+## Training/Test set Variable Importance
+
+### Training Importance
+
+```{r}
+pos<- rfdata |> filter(`Folkmedicine`=="Yes")
+neg <- rfdata |> filter(`Folkmedicine`=="No")
+
+set.seed(222)
+ind_pos <- sample(c(0,1), nrow(pos), replace = T, prob = c(0.7, 0.3))
+ind_neg <- sample(c(0,1), nrow(neg), replace = T, prob = c(0.7, 0.3))
+
+
+train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
+test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
+
+# rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(`Folkmedicine` ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="gini")
+print(rfobj)
+
+print(rfobj)
+plot(rfobj,plots.one.page = FALSE)
+rfobj$importance
+
+var_importance <- rfobj$importance[, "all"]
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+
+importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#F8766D") +
+  coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_bw()
+  
+plot(importance_plot)
+```
+
+
+### Test Set Importance
+
+```{r}
+test_rf <- predict.rfsrc(rfobj,newdata=test)
+get.imbalanced.performance(rfobj)
 ```
