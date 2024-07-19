@@ -67,17 +67,18 @@ ps(Family)
 ```{r}
 rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
   mutate(Family=droplevels(Family)) |> 
-  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   # filter(!is.na(Family)) |> 
   na.omit() |>
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
          EnglishDiff=`English Difficulties`) |> 
-  as.data.frame()
+  as.data.frame() |> 
+  rename_with(make.names)
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Family ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc",method="brf")
 print(rfobj)
 
 print(rfobj)
@@ -102,17 +103,18 @@ plot(importance_plot)
 ### Training Importance
 
 ```{r}
-pos<- rfdata |> filter(Family=="Yes")
-neg <- rfdata |> filter(Family=="No")
 
 set.seed(222)
-imbal_index <- caret::createDataPartition(rfdata$Family,p=0.75,list=F,times=1)
-train <- rfdata[imbal_index,]
+imbal_index <- caret::createDataPartition(rfdata$Family,p=0.8,list=F,times=1)
+imbal_train <- rfdata[imbal_index,]
+train <- ROSE::ROSE(Family~.,
+                          data=imbal_train,
+                          seed=3)$data
 test<- rfdata[-imbal_index,]
 
-rfsrc(Family~.,data=train, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
-# rfobj <- imbalanced(Family ~ .,importance=T,data=train,
-#                     perf.type = "gmean",splitrule="gini")
+# rfsrc(Family~.,data=train, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+rfobj <- imbalanced(Family ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -160,15 +162,16 @@ ps(`Heal Professionals`)
 
 ```{r}
 rfdata <- qol |> 
-  select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
          EnglishDiff=`English Difficulties`) |> 
-  as.data.frame() 
+  as.data.frame() |> 
+  rename_with(make.names)
 
-imbalanced(`Heal Professionals` ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")->rfobj
+imbalanced(Heal.Professionals ~ .,importance=T,data=rfdata,
+                    perf.type = "gmean",splitrule="auc")->rfobj
 
 print(rfobj)
 plot(rfobj,plots.one.page = FALSE)
@@ -191,17 +194,20 @@ plot(importance_plot)
 ### Training Importance
 
 ```{r}
-pos<- rfdata |> filter(`Heal Professionals`=="Yes")
-neg <- rfdata |> filter(`Heal Professionals`==0)
+pos<- rfdata |> filter(Heal.Professionals=="Yes")
+neg <- rfdata |> filter(Heal.Professionals==0)
 
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$`Heal Professionals`,p=0.75,list=F,times=1)
-train <- rfdata[imbal_index,]
+imbal_index <- createDataPartition(rfdata$Heal.Professionals,p=0.8,list=F,times=1)
+imbal_train <- rfdata[imbal_index,]
+train <- ROSE::ROSE(Heal.Professionals~.,
+                          data=imbal_train,
+                          seed=3)$data
 test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
-rfobj <- imbalanced(`Heal Professionals` ~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+rfobj <- imbalanced(Heal.Professionals ~ .,importance=T,data=train,
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -252,7 +258,7 @@ ps(`Health Insurance`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Health Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Health Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -261,7 +267,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(Health.Insurance ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 
 get.imbalanced.performance(imb)
@@ -293,7 +299,7 @@ set.seed(222)
 # train <- bind_rows(pos[ind_pos==0,],neg[ind_neg==0,])
 # test <- bind_rows(pos[ind_pos==1,],neg[ind_neg==1,])
 
-imbal_index <- createDataPartition(rfdata$Health.Insurance,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Health.Insurance,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Health.Insurance~.,
                           data=imbal_train,
@@ -302,7 +308,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Health.Insurance ~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -353,7 +359,7 @@ ps(`Dental Insurance`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Dental Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Dental Insurance`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -362,7 +368,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(Dental.Insurance ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 
 get.imbalanced.performance(imb)
@@ -387,7 +393,7 @@ plot(importance_plot)
 ```{r}
 
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$Dental.Insurance,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Dental.Insurance,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Dental.Insurance~.,
                           data=imbal_train,
@@ -396,7 +402,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Dental.Insurance ~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -446,7 +452,7 @@ ps(`Physical Check-up`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -455,7 +461,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(Physical.Check.up ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
@@ -481,7 +487,7 @@ plot(importance_plot)
 ```{r}
 
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$Physical.Check.up,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Physical.Check.up,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Physical.Check.up~.,
                           data=imbal_train,
@@ -490,7 +496,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Physical.Check.up~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -541,7 +547,7 @@ ps(`Dentist Check-up`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -550,7 +556,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(Dentist.Check.up ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
@@ -575,7 +581,7 @@ plot(importance_plot)
 
 ```{r}
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$Dentist.Check.up,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Dentist.Check.up,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Dentist.Check.up~.,
                           data=imbal_train,
@@ -584,7 +590,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Dentist.Check.up~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -635,7 +641,7 @@ ps(`Urgentcare`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Urgentcare`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Urgentcare`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -644,7 +650,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(`Urgentcare` ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
@@ -670,7 +676,7 @@ plot(importance_plot)
 ```{r}
 
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$Urgentcare,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Urgentcare,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Urgentcare~.,
                           data=imbal_train,
@@ -679,7 +685,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(Urgentcare~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
@@ -730,7 +736,7 @@ ps(`Folkmedicine`)
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`) %>%
+  select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -739,7 +745,7 @@ rfdata <- qol |>
   rename_with(make.names)
 
 imb <- imbalanced(Folkmedicine ~ .,importance=T,data=rfdata,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(imb)
 plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
@@ -764,7 +770,7 @@ plot(importance_plot)
 
 ```{r}
 set.seed(222)
-imbal_index <- createDataPartition(rfdata$Folkmedicine,p=0.75,list=F,times=1)
+imbal_index <- createDataPartition(rfdata$Folkmedicine,p=0.8,list=F,times=1)
 imbal_train <- rfdata[imbal_index,]
 train <- ROSE::ROSE(Folkmedicine~.,
                           data=imbal_train,
@@ -773,7 +779,7 @@ test<- rfdata[-imbal_index,]
 
 # rfsrc(Family~.,data=rfdata, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
 rfobj <- imbalanced(`Folkmedicine` ~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="gini")
+                    perf.type = "gmean",splitrule="auc")
 print(rfobj)
 
 print(rfobj)
