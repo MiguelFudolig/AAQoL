@@ -56,6 +56,27 @@ ps <- function(x,dataset=qol){
     summarize(n=n()) |> 
     mutate(pct=n/sum(n)*100)
 }
+
+
+```
+
+# Demographics
+
+```{r}
+ps(Ethnicity)
+ps(Gender)
+ps(Religion)
+ps(`Full Time Employment`)
+ps(Income)
+ps(`English Speaking`)
+ps(`English Difficulties`)
+
+```
+```{r}
+qol |> summarize(age_mean = mean(Age,na.rm=T),
+                 age_sd = sd(Age,na.rm=T),
+                 age_min = min(Age,na.rm=T),
+                 age_max = max(Age,na.rm=T))
 ```
 
 # Source of Information: Family
