@@ -17,6 +17,7 @@ library(car)
 library(glmnet)
 library(randomForestSRC)
 library(caret)
+library(ggRandomForests)
 ```
 
 
@@ -70,14 +71,18 @@ ps(`Full Time Employment`)
 ps(Income)
 ps(`English Speaking`)
 ps(`English Difficulties`)
-
+ps(Discrimination)
 ```
+
+
 ```{r}
 qol |> summarize(age_mean = mean(Age,na.rm=T),
                  age_sd = sd(Age,na.rm=T),
                  age_min = min(Age,na.rm=T),
                  age_max = max(Age,na.rm=T))
 ```
+
+
 
 # Source of Information: Family
 
@@ -107,15 +112,40 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+```
+
+### Cross validation in Random Forests (Run when you have time)
+
+```{r}
+# myTrainingControl <- trainControl(method = "repeatedcv",
+#                                   number = 10,                   
+#                                   repeats = 3,                 
+#                                   savePredictions = TRUE,
+#                                   classProbs = TRUE,
+#                                   verboseIter = TRUE,
+#                                   search = "grid")
+# 
+# 
+# set.seed(123)
+# 
+# model_rf <- train(Family~ .,
+#                   data=rfdata,
+#                   method = 'rf',
+#                   metric = "Accuracy",             
+#                   trControl = myTrainingControl,       
+#                   importance = TRUE                 
+#                   )
+# 
+# varImp(model_rf)
 ```
 
 
@@ -132,47 +162,51 @@ train <- ROSE::ROSE(Family~.,
                           data=imbal_train,
                           seed=3)$data
 test<- rfdata[-imbal_index,]
-
-# rfsrc(Family~.,data=train, importance="permute", perf.type="gmean",block.size = 10) ->rfobj
+# 
+# rfsrc(Family~.,data=train, importance="permute", 
+#       perf.type="gmean",
+#       splitrule="auc",
+#       block.size = 10) ->rfobj
 rfobj <- imbalanced(Family ~ .,importance=T,data=train,
-                    perf.type = "gmean",splitrule="auc")
-print(rfobj)
+perf.type = "gmean",splitrule="auc")
 
 print(rfobj)
 plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="family_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance = T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance = T,outcome="test")
 get.imbalanced.performance(test_rf)
 
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="family_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Source of Information: Health Professionals
@@ -199,15 +233,16 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+
 ```
 
 ## Training/Test set Variable Importance
@@ -236,35 +271,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="healthpro_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="healthpro_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Health Insurance
@@ -294,11 +331,11 @@ print(imb)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -337,35 +374,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="HIns_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="HIns_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Dental Insurance
@@ -395,11 +434,11 @@ print(imb)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -431,35 +470,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="DIns_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="DIns_test_VIMP.png",width=5,height=5,units="in")
 ```
 # Physical Checkup
 
@@ -488,11 +529,11 @@ plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -525,35 +566,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="PChk_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="PChk_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Dental Checkup
@@ -583,11 +626,11 @@ plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -619,35 +662,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="DChk_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="DChk_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Urgent Care
@@ -677,11 +722,11 @@ plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -714,35 +759,37 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="UC_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance=T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="UC_test_VIMP.png",width=5,height=5,units="in")
 ```
 
 # Folk Medicine
@@ -772,11 +819,11 @@ plot(imb,plots.one.page = F)
 get.imbalanced.performance(imb)
 
 var_importance <- imb$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
   
 # Create ggplot for variable importance
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_minimal()
@@ -808,33 +855,35 @@ plot(rfobj,plots.one.page = FALSE)
 rfobj$importance
 
 var_importance <- rfobj$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance", x = "Variable", y = "Importance") +
   theme_bw()
   
 plot(importance_plot)
+ggsave(filename="Folk_train_VIMP.png",width=5,height=5,units="in")
 ```
 
 
 ### Test Set Importance
 
 ```{r}
-test_rf <- predict.rfsrc(rfobj,newdata=test,importance = T)
+test_rf <- predict.rfsrc(rfobj,newdata=test,importance = T,outcome="test")
 get.imbalanced.performance(test_rf)
 test_rf$importance
 
 var_importance <- test_rf$importance[, "all"]
-var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance)
+var_importance_df <- data.frame(variable = names(var_importance), importance = var_importance*100)
 
 importance_plot <- ggplot(var_importance_df, aes(x = reorder(variable, importance), y = importance)) +
-  geom_bar(stat = "identity", fill = "#F8766D") +
+  geom_bar(stat = "identity", fill = "black") +
   coord_flip() +
   labs(title = "Variable Importance (Test)", x = "Variable", y = "Importance") +
   theme_bw()
 
 importance_plot
+ggsave(filename="Folk_test_VIMP.png",width=5,height=5,units="in")
 ```
