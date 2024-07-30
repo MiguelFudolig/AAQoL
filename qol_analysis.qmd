@@ -908,3 +908,43 @@ OR_df
 
 
 ```
+
+### Ethnic Concordance
+
+#### Dichotomized Income
+```{r}
+ps(Preferance)
+```
+
+```{r}
+mod2 <- glm(`Preferance`~Income_median + Age + Gender + `Health Insurance` + `Dental Insurance`,
+            data=qol,
+            family="binomial")
+
+mod3 <- glm(`Preferance`~Income_median + Age + Gender + `Health Insurance` + `Dental Insurance` + Ethnicity,
+            data=qol,
+            family="binomial")
+summary(mod2)
+car::vif(mod2)
+car::Anova(mod2) %>% round(3)
+
+summary(mod3)
+car::vif(mod3)
+car::Anova(mod3) %>% round(3)
+
+anova(mod2,mod3,test="LRT")
+data.frame(BIC_mod2=BIC(mod2), BIC_mod3=BIC(mod3)) |> mutate(Diff=BIC_mod3-BIC_mod2)
+```
+
+We now calculate the odds ratios and 95% confidence intervals.
+
+```{r}
+OR <- exp(coef(mod3))
+OR_CI <- exp(confint(mod3))
+
+OR_df <- data.frame(estimate = OR, LCL=OR_CI[,1], UCL = OR_CI[,2])
+OR_df["Age",] <- OR_df["Age",]^10
+OR_df |> round(3)
+
+
+```
