@@ -44,7 +44,8 @@ qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x
                                          "$70,000 and over"~"Above",
                                           .default=Income)) |> 
   mutate(Income_median = factor(Income_median, levels=c("Below","Above"))) |> 
-  mutate(across(c(`Family Respect`:`Togetherness`,`Close-knit Community`:`Community Trust`),~relevel(.x,ref="Strongly disagree")))
+  mutate(across(c(`Family Respect`:`Togetherness`,`Close-knit Community`:`Community Trust`),~relevel(.x,ref="Strongly disagree")))|> 
+  mutate(across(c(`See Family`:`Helpful Friends`,`Discrimination`),~as.factor(.x)))
 
 qol |> DT::datatable()
 ```
@@ -63,6 +64,7 @@ imbal <- ROSE::ROSE(Family~.,
                           data=rfdata,
                           seed=3)$data
 
+
 VSURF(Family~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
@@ -78,9 +80,24 @@ vsurf.mod$mean.perf
 vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
                 Importance = vsurf.mod$imp.mean.dec,
                 sd_Importance = vsurf.mod$imp.sd.dec
-)
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
 
 vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_family.png", width=8, height=12,units="in")
 ```
 
 ## Logistic regression (Interpretation)
@@ -124,9 +141,24 @@ vsurf.mod$mean.perf
 vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
                 Importance = vsurf.mod$imp.mean.dec,
                 sd_Importance = vsurf.mod$imp.sd.dec
-)
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
 
 vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_hp.png", width=12, height=8,units="in")
 ```
 
 ## Logistic regression (Interpretation)
@@ -180,9 +212,24 @@ vsurf.mod$mean.perf
 vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
                 Importance = vsurf.mod$imp.mean.dec,
                 sd_Importance = vsurf.mod$imp.sd.dec
-)
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
 
 vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_PC.png", width=12, height=8,units="in")
 ```
 
 ## Logistic regression (Interpretation)
@@ -228,9 +275,24 @@ vsurf.mod$mean.perf
 vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
                 Importance = vsurf.mod$imp.mean.dec,
                 sd_Importance = vsurf.mod$imp.sd.dec
-)
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
 
 vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Dc.png", width=12, height=8,units="in")
 ```
 
 ## Logistic regression (Interpretation)
@@ -276,9 +338,24 @@ vsurf.mod$mean.perf
 vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
                 Importance = vsurf.mod$imp.mean.dec,
                 sd_Importance = vsurf.mod$imp.sd.dec
-)
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
 
 vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Alt.png", width=12, height=8,units="in")
 ```
 
 ## Logistic regression (Interpretation)

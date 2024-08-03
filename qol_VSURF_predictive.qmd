@@ -1,0 +1,372 @@
+---
+title: "VSURF"
+author: "Miguel Fudolig"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+---
+
+
+```{r, output=F}
+library(tidyverse)
+library(ggplot2)
+library(car)
+library(glmnet)
+library(randomForestSRC)
+library(caret)
+library(ggRandomForests)
+library(VSURF)
+```
+
+# Data set  
+
+This data set is from the 2015 Asian American Quality of Life survey. Participants are from Austin, Texas.
+
+## Input data set
+
+
+```{r}
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
+  mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
+         `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
+         Ethnicity = relevel(Ethnicity,ref="Chinese"),
+         Religion=relevel(Religion,ref="None")) |> 
+  mutate(Income_median = case_match(Income,"$0 - $9,999"~"Below",
+                                         "$10,000 - $19,999" ~"Below",
+                                         "$20,000 - $29,999"~"Below",
+                                         "$30,000 - $39,999"~"Below",
+                                         "$40,000 - $49,999"~"Below",
+                                         "$50,000 - $59,999"~"Below",
+                                         "$60,000 - $69,999"~"Above",
+                                         "$70,000 and over"~"Above",
+                                          .default=Income)) |> 
+  mutate(Income_median = factor(Income_median, levels=c("Below","Above"))) |> 
+  mutate(across(c(`Family Respect`:`Togetherness`,`Close-knit Community`:`Community Trust`),~relevel(.x,ref="Strongly disagree"))) |> 
+  mutate(across(c(`See Family`:`Helpful Friends`,`Discrimination`),~as.factor(.x)))
+
+qol |> DT::datatable()
+```
+
+# Family
+
+```{r}
+rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
+  mutate(Family=droplevels(Family)) |> 
+  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+
+# set.seed(222)
+# imbal_index <- createDataPartition(rfdata$Family,p=0.8,list=F,times=1)
+# imbal_train <- rfdata[imbal_index,]
+# imbal_test <- rfdata[-imbal_index,]
+imbal <- ROSE::ROSE(Family~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(imbal[,2:ncol(imbal)],imbal[,1],parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+) |> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_family.png", width=8, height=12,units="in")
+```
+
+## Prediction
+
+```{r}
+
+pred<- predict(vsurf.mod,newdata=imbal_test[,-1])
+caret::confusionMatrix(data=pred$pred,reference=imbal_test[,1],positive="Yes")
+pROC::roc(imbal_test[,1] |> as.ordered(),pred$pred |> as.ordered()) -> rocobj
+pROC::auc(rocobj)
+```
+
+# Health Professionals
+
+```{r}
+rfdata <- qol |> select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+# set.seed(222)
+# imbal_index <- createDataPartition(rfdata$Heal.Professionals,p=0.8,list=F,times=1)
+# imbal_train <- rfdata[imbal_index,]
+# imbal_test <- rfdata[-imbal_index,]
+imbal <- ROSE::ROSE(Heal.Professionals~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(imbal[,2:ncol(imbal)],imbal[,1],parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+) |> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  # coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_hp.png", width=8, height=12,units="in")
+```
+
+## Prediction
+
+```{r}
+
+pred<- predict(vsurf.mod,newdata=imbal_test[,-1])
+caret::confusionMatrix(data=pred$pred,reference=imbal_test[,1],positive="Yes")
+pROC::roc(imbal_test[,1] |> as.ordered(),pred$pred |> as.ordered()) -> rocobj
+pROC::auc(rocobj)
+```
+
+
+
+# Physical Check-up
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) |> 
+  as.data.frame() |> 
+  rename_with(make.names)
+
+# set.seed(222)
+# imbal_index <- createDataPartition(rfdata$Physical.Check.up,p=0.8,list=F,times=1)
+# imbal_train <- rfdata[imbal_index,]
+# imbal_test <- rfdata[-imbal_index,]
+
+imbal <- ROSE::ROSE(Physical.Check.up~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(imbal[,2:ncol(imbal)],imbal[,1],parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+) |> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  # coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_PC.png", width=8, height=12,units="in")
+```
+
+## Prediction
+
+```{r}
+
+pred<- predict(vsurf.mod,newdata=imbal_test[,-1])
+caret::confusionMatrix(data=pred$pred,reference=imbal_test[,1],positive="Yes")
+pROC::roc(imbal_test[,1] |> as.ordered(),pred$pred |> as.ordered()) -> rocobj
+pROC::auc(rocobj)
+```
+
+# Dental Check-up
+
+```{r}
+rfdata <- qol |> select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+# set.seed(222)
+# imbal_index <- createDataPartition(rfdata$Dentist.Check.up,p=0.8,list=F,times=1)
+# imbal_train <- rfdata[imbal_index,]
+# imbal_test <- rfdata[-imbal_index,]
+imbal <- ROSE::ROSE(Dentist.Check.up~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(imbal[,2:ncol(imbal)],imbal[,1],parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+) |> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  # coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Dc.png", width=8, height=12,units="in")
+```
+
+## Prediction
+
+```{r}
+
+pred<- predict(vsurf.mod,newdata=imbal_test[,-1])
+caret::confusionMatrix(data=pred$pred,reference=imbal_test[,1],positive="Yes")
+pROC::roc(imbal_test[,1] |> as.ordered(),pred$pred |> as.ordered()) -> rocobj
+pROC::auc(rocobj)
+```
+
+# Folkmedicine
+
+```{r}
+rfdata <- qol |> select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+# set.seed(222)
+# imbal_index <- createDataPartition(rfdata$Folkmedicine,p=0.8,list=F,times=1)
+# imbal_train <- rfdata[imbal_index,]
+# imbal_test <- rfdata[-imbal_index,]
+imbal <- ROSE::ROSE(Folkmedicine~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(imbal[,2:ncol(imbal)],imbal[,1],parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)  |> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  # coord_flip() +
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Alt.png", width=8, height=12,units="in")
+```
+
+## Prediction
+
+```{r}
+pred<- predict(vsurf.mod,newdata=imbal_test[,-1])
+caret::confusionMatrix(data=pred$pred,reference=imbal_test[,1],positive="Yes")
+pROC::roc(imbal_test[,1] |> as.ordered(),pred$pred |> as.ordered()) -> rocobj
+pROC::auc(rocobj)
+```
