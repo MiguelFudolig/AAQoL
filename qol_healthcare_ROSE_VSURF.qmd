@@ -1,0 +1,311 @@
+---
+title: "Barriers in healthcare Utilization (VSURF)"
+author: "Miguel Fudolig"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+---
+```{r, output=F}
+library(tidyverse)
+library(ggplot2)
+library(lavaan)
+library(car)
+library(caret)
+library(ggRandomForests)
+library(VSURF)
+library(glmnet)
+library(Boruta)
+library(doParallel)
+```
+
+# Data set  
+
+This data set is from the 2015 Asian American Quality of Life survey. Participants are from Austin, Texas.
+
+## Input data set
+
+
+```{r}
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
+  mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
+         `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
+         Ethnicity = relevel(Ethnicity,ref="Chinese"),
+         Religion=relevel(Religion,ref="None")) |> 
+  mutate(Income_median = case_match(Income,"$0 - $9,999"~"Below",
+                                         "$10,000 - $19,999" ~"Below",
+                                         "$20,000 - $29,999"~"Below",
+                                         "$30,000 - $39,999"~"Below",
+                                         "$40,000 - $49,999"~"Below",
+                                         "$50,000 - $59,999"~"Below",
+                                         "$60,000 - $69,999"~"Above",
+                                         "$70,000 and over"~"Above",
+                                          .default=Income)) |> 
+  mutate(Income_median = factor(Income_median, levels=c("Below","Above"))) |> 
+  mutate(across(`Familiarity with America`:`Familiarity with Ethnic Origin`,~factor(.x,levels=c("Very low","Low", "High", "Very high"))),
+         across(`Identify Ethnically`,~factor(.x,levels=c("Not at all","Not very close","Somewhat close","Very close"))),
+         across(`Belonging`,~factor(.x,levels=c("Not at all","Not very much","Somewhat","Very much"))),
+         `Primary Language` = as.factor(`Primary Language`))
+qol |> DT::datatable()
+```
+
+# Unmet Health Need
+
+```{r}
+rfdata <- qol |> select(`Unmet Health Need`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+imbal <- ROSE::ROSE(Unmet.Health.Need~.,
+                          data=rfdata,
+                          seed=3)$data
+
+# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Unmet.Health.Need~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_unmethealth.png", width=12, height=8,units="in")
+```
+
+# Unmet Dental Needs
+
+```{r}
+rfdata <- qol |> select(`Unmet Dental Needs`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+imbal <- ROSE::ROSE(Unmet.Dental.Needs~.,
+                          data=rfdata,
+                          seed=3)$data
+
+# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Unmet.Dental.Needs~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_unmetdental.png", width=12, height=8,units="in")
+```
+
+# Physical Check-up
+
+```{r}
+
+rfdata <- qol |> 
+  select(`Physical Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) |> 
+  as.data.frame() |> 
+  rename_with(make.names)
+
+imbal <- ROSE::ROSE(Physical.Check.up~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(Physical.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Physical.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_PC_ROSE.png", width=12, height=8,units="in")
+```
+
+
+
+
+
+# Dental Check-up
+
+```{r}
+rfdata <- qol |> select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+imbal <- ROSE::ROSE(Dentist.Check.up~.,
+                          data=rfdata,
+                          seed=3)$data
+
+VSURF(Dentist.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Dentist.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Dc_ROSE.png", width=12, height=8,units="in")
+```
+
+
+
+# Folkmedicine
+
+```{r}
+rfdata <- qol |> select(`Folkmedicine`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+    na.omit() |>
+  as.data.frame() |> 
+  rename_with(make.names)
+
+imbal <- ROSE::ROSE(Folkmedicine~.,
+                          data=rfdata,
+                          seed=3)$data
+
+# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+
+vsurf.mod |> summary()
+names(rfdata[,-1])[vsurf.mod$varselect.pred]
+names(rfdata[,-1])[vsurf.mod$varselect.interp]
+plot(vsurf.mod)
+vsurf.mod$mean.perf
+```
+
+
+## Importance
+
+```{r}
+vi<- data.frame(Variable=names(rfdata[,-1])[vsurf.mod$imp.mean.dec.ind],
+                Importance = vsurf.mod$imp.mean.dec,
+                sd_Importance = vsurf.mod$imp.sd.dec
+)|> 
+  mutate(fill = case_when(Variable=="Ethnicity"~"red",
+                                                 .default="black"))
+
+vi |> mutate(across(Importance:sd_Importance,~round(.x,5)))
+
+importance_plot <- ggplot(vi, aes(x = reorder(Variable, Importance), y = Importance, fill=fill))+
+  geom_bar(stat = "identity",alpha=0.4) +
+  geom_errorbar(aes(ymin=Importance-sd_Importance, ymax = Importance+sd_Importance))+
+  
+  labs(title = "Variable Importance", x = "Variable", y = "Importance") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  scale_fill_manual(values=c("black","red"),
+                    guide="none")
+  
+plot(importance_plot)
+ggsave(filename = "VSURF_importance_Alt_ROSE.png", width=12, height=8,units="in")
+```
+
+
+
+

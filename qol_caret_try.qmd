@@ -1,0 +1,183 @@
+---
+title: "qol_caret"
+format:
+  html: 
+    code-fold: true
+    table-of-contents: true
+    toc-depth: 4
+    toc-location: left
+---
+
+```{r, output=F}
+library(tidyverse)
+library(ggplot2)
+library(lavaan)
+library(car)
+library(caret)
+library(ranger)
+library(doParallel)
+```
+
+# Data set  
+
+This data set is from the 2015 Asian American Quality of Life survey. Participants are from Austin, Texas.
+
+## Input data set
+
+
+```{r}
+qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x))) |> 
+  mutate(`English Difficulties`=relevel(`English Difficulties`,ref="Not at all"),
+         `English Speaking`=relevel(`English Speaking`,ref="Not at all"),
+         Ethnicity = relevel(Ethnicity,ref="Chinese"),
+         Religion=relevel(Religion,ref="None")) |> 
+  mutate(Income_median = case_match(Income,"$0 - $9,999"~"Below",
+                                         "$10,000 - $19,999" ~"Below",
+                                         "$20,000 - $29,999"~"Below",
+                                         "$30,000 - $39,999"~"Below",
+                                         "$40,000 - $49,999"~"Below",
+                                         "$50,000 - $59,999"~"Below",
+                                         "$60,000 - $69,999"~"Above",
+                                         "$70,000 and over"~"Above",
+                                          .default=Income)) |> 
+  mutate(Income_median = factor(Income_median, levels=c("Below","Above"))) |> 
+  mutate(across(`Familiarity with America`:`Familiarity with Ethnic Origin`,~factor(.x,levels=c("Very low","Low", "High", "Very high"))),
+         across(`Identify Ethnically`,~factor(.x,levels=c("Not at all","Not very close","Somewhat close","Very close"))),
+         across(`Belonging`,~factor(.x,levels=c("Not at all","Not very much","Somewhat","Very much"))),
+         `Primary Language` = as.factor(`Primary Language`))
+qol |> DT::datatable()
+```
+
+# Physical Check-up
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Physical Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) |> 
+  as.data.frame() |> 
+  rename_with(make.names)
+
+inTraining <- createDataPartition(rfdata$Physical.Check.up, p = .8, list = FALSE)
+training <- rfdata[ inTraining,]
+testing  <- rfdata[-inTraining,]
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Physical.Check.up ~ ., data = training, 
+                 method = "rf", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
+```
+
+```{r}
+predict(rf_fit, newdata=testing) -> pc_pred
+
+confusionMatrix(data=pc_pred,reference=testing$Physical.Check.up)
+```
+# Dental Check-up
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) |> 
+  as.data.frame() |> 
+  rename_with(make.names)
+
+inTraining <- createDataPartition(rfdata$Dentist.Check.up, p = .8, list = FALSE)
+training <- rfdata[ inTraining,]
+testing  <- rfdata[-inTraining,]
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Dentist.Check.up ~ ., data = training, 
+                 method = "rf", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
+```
+
+```{r}
+predict(rf_fit, newdata=testing) -> pc_pred
+
+confusionMatrix(data=pc_pred,reference=testing$Dentist.Check.up)
+```
+
+# Folkmedicine
+
+```{r}
+#install.packages("randomForestSRC)
+
+rfdata <- qol |> 
+  select(`Folkmedicine`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  na.omit() |> 
+  rename(Employment=`Full Time Employment`,
+         EnglishSpeak=`English Speaking`,
+         EnglishDiff=`English Difficulties`) |> 
+  as.data.frame() |> 
+  rename_with(make.names)
+
+inTraining <- createDataPartition(rfdata$Folkmedicine, p = .8, list = FALSE)
+training <- rfdata[ inTraining,]
+testing  <- rfdata[-inTraining,]
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Folkmedicine ~ ., data = training, 
+                 method = "rf", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
+```
+
+```{r}
+predict(rf_fit, newdata=testing) -> pc_pred
+
+confusionMatrix(data=pc_pred,reference=testing$Folkmedicine)
+```

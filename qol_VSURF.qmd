@@ -14,11 +14,12 @@ library(tidyverse)
 library(ggplot2)
 library(lavaan)
 library(car)
-library(glmnet)
-library(randomForestSRC)
 library(caret)
 library(ggRandomForests)
 library(VSURF)
+library(glmnet)
+library(Boruta)
+library(doParallel)
 ```
 
 # Data set  
@@ -44,9 +45,10 @@ qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x
                                          "$70,000 and over"~"Above",
                                           .default=Income)) |> 
   mutate(Income_median = factor(Income_median, levels=c("Below","Above"))) |> 
-  mutate(across(c(`Family Respect`:`Togetherness`,`Close-knit Community`:`Community Trust`),~relevel(.x,ref="Strongly disagree")))|> 
-  mutate(across(c(`See Family`:`Helpful Friends`,`Discrimination`),~as.factor(.x)))
-
+  mutate(across(`Familiarity with America`:`Familiarity with Ethnic Origin`,~factor(.x,levels=c("Very low","Low", "High", "Very high"))),
+         across(`Identify Ethnically`,~factor(.x,levels=c("Not at all","Not very close","Somewhat close","Very close"))),
+         across(`Belonging`,~factor(.x,levels=c("Not at all","Not very much","Somewhat","Very much"))),
+         `Primary Language` = as.factor(`Primary Language`))
 qol |> DT::datatable()
 ```
 
@@ -55,7 +57,7 @@ qol |> DT::datatable()
 ```{r}
 rfdata <- qol |> filter(Family %in% c("No","Yes")) |> 
   mutate(Family=droplevels(Family)) |> 
-  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+  select(Family, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -65,7 +67,8 @@ imbal <- ROSE::ROSE(Family~.,
                           seed=3)$data
 
 
-VSURF(Family~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Family~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Family~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -114,10 +117,24 @@ broom::tidy(lr_mod,exponentiate=T,conf.int=T) |> DT::datatable()
 
 ```
 
+## CV LASSO
+
+```{r}
+x <- makeX(rfdata[,-1])
+y <- rfdata$Family
+
+
+cv.glmnet(x,y,family="binomial", type.measure = "auc")-> modcv
+modcv$lambda.1se
+coef(modcv,s="lambda.1se")
+print(modcv)
+```
+
+
 # Health Professionals
 
 ```{r}
-rfdata <- qol |> select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+rfdata <- qol |> select(`Heal Professionals`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -126,7 +143,8 @@ imbal <- ROSE::ROSE(Heal.Professionals~.,
                           data=rfdata,
                           seed=3)$data
 
-VSURF(Heal.Professionals~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Heal.Professionals~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Heal.Professionals~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -176,7 +194,17 @@ broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> DT::datatable()
 
 ```
 
+## CV LASSO
+```{r}
+x <- makeX(rfdata[,-1])
+y <- rfdata$Heal.Professionals
 
+
+cv.glmnet(x,y,family="binomial", type.measure = "auc")-> modcv
+modcv$lambda.1se
+coef(modcv,s="lambda.1se")
+print(modcv)
+```
 
 # Physical Check-up
 
@@ -184,7 +212,7 @@ broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> DT::datatable()
 #install.packages("randomForestSRC)
 
 rfdata <- qol |> 
-  select(`Physical Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`, Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) %>%
+  select(`Physical Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -196,7 +224,8 @@ imbal <- ROSE::ROSE(Physical.Check.up~.,
                           data=rfdata,
                           seed=3)$data
 
-VSURF(Physical.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Physical.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Physical.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -235,22 +264,77 @@ ggsave(filename = "VSURF_importance_PC.png", width=12, height=8,units="in")
 ## Logistic regression (Interpretation)
 
 ```{r}
-lr <- rfdata |> select(Physical.Check.up,names(rfdata[,-1])[vsurf.mod$varselect.pred])
+lr <- rfdata |> select(Physical.Check.up,names(rfdata[,-1])[vsurf.mod$varselect.interp])
 
 lr_mod <- glm(Physical.Check.up~.,family=binomial,data=lr)
 summary(lr_mod)
 car::Anova(lr_mod)
 
 
-broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> DT::datatable()
+broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> 
+  mutate(across(estimate:conf.high,~round(.x,3))) |> 
+  DT::datatable()
 
 
 ```
 
+## CV LASSO
+
+```{r}
+x <- makeX(rfdata[,-1])
+y <- rfdata$Physical.Check.up
+
+
+cv.glmnet(x,y,family="binomial", type.measure = "auc")-> modcv
+modcv$lambda.1se
+coef(modcv,s="lambda.1se")
+print(modcv)
+```
+
+## Boruta
+
+```{r}
+set.seed(123)
+
+Boruta(Physical.Check.up~.,
+       data=rfdata,
+       doTrace=2,
+       ) ->pc_boruta
+
+plot(pc_boruta,las=2,cex.axis=0.5)
+pc_boruta
+pc_boruta$finalDecision
+```
+
+## Naive Bayes Classifier
+
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Physical.Check.up ~ ., data = rfdata, 
+                 method = "naive_bayes", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
+```
+
+
 # Dental Check-up
 
 ```{r}
-rfdata <- qol |> select(`Dentist Check-up`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+rfdata <- qol |> select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -259,7 +343,8 @@ imbal <- ROSE::ROSE(Dentist.Check.up~.,
                           data=rfdata,
                           seed=3)$data
 
-VSURF(Dentist.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Dentist.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Dentist.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -298,22 +383,76 @@ ggsave(filename = "VSURF_importance_Dc.png", width=12, height=8,units="in")
 ## Logistic regression (Interpretation)
 
 ```{r}
-lr <- rfdata |> select(Dentist.Check.up,names(rfdata[,-1])[vsurf.mod$varselect.pred])
+lr <- rfdata |> select(Dentist.Check.up,names(rfdata[,-1])[vsurf.mod$varselect.interp])
 
 lr_mod <- glm(Dentist.Check.up~.,family=binomial,data=lr)
 summary(lr_mod)
 car::Anova(lr_mod)
 
 
-broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> DT::datatable()
+broom::tidy(lr_mod,exponentiate=T,conf.int=T)|>
+  mutate(across(estimate:conf.high,~round(.x,3))) |> 
+  DT::datatable()
 
 
+```
+
+## CV LASSO
+
+```{r}
+x <- makeX(rfdata[,-1])
+y <- rfdata$Dentist.Check.up
+
+
+cv.glmnet(x,y,family="binomial", type.measure = "auc")-> modcv
+modcv$lambda.1se
+coef(modcv,s="lambda.1se")
+print(modcv)
+```
+
+## Boruta
+
+```{r}
+set.seed(123)
+
+Boruta(Dentist.Check.up~.,
+       data=rfdata,
+       doTrace=2,
+       ) ->pc_boruta
+
+plot(pc_boruta,las=2,cex.axis=0.5)
+pc_boruta
+pc_boruta$finalDecision
+```
+
+## Naive Bayes Classifier
+
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Dentist.Check.up ~ ., data = rfdata, 
+                 method = "naive_bayes", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
 ```
 
 # Folkmedicine
 
 ```{r}
-rfdata <- qol |> select(`Folkmedicine`, Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `English Speaking`, `English Difficulties`,`See Family`:`Community Trust`,`Health Insurance`,`Dental Insurance`,`Discrimination`) |> 
+rfdata <- qol |> select(`Folkmedicine`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -322,7 +461,8 @@ imbal <- ROSE::ROSE(Folkmedicine~.,
                           data=rfdata,
                           seed=3)$data
 
-VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+VSURF(Folkmedicine~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -361,12 +501,65 @@ ggsave(filename = "VSURF_importance_Alt.png", width=12, height=8,units="in")
 ## Logistic regression (Interpretation)
 
 ```{r}
-lr <- rfdata |> select(Folkmedicine,names(rfdata[,-1])[vsurf.mod$varselect.pred])
+lr <- rfdata |> select(Folkmedicine,names(rfdata[,-1])[vsurf.mod$varselect.interp])
 
 lr_mod <- glm(Folkmedicine~.,family=binomial,data=lr)
 summary(lr_mod)
 car::Anova(lr_mod)
 
-broom::tidy(lr_mod,exponentiate=T,conf.int=T)|> DT::datatable()
+broom::tidy(lr_mod,exponentiate=T,conf.int=T)|>
+  mutate(across(estimate:conf.high,~round(.x,3))) |> 
+  DT::datatable()
 
+```
+
+## CV LASSO
+```{r}
+x <- makeX(rfdata[,-1])
+y <- rfdata$Folkmedicine
+
+
+cv.glmnet(x,y,family="binomial", type.measure = "auc")-> modcv
+modcv$lambda.1se
+coef(modcv,s="lambda.1se")
+print(modcv)
+```
+
+## Boruta
+
+```{r}
+set.seed(123)
+
+Boruta(Folkmedicine~.,
+       data=rfdata,
+       doTrace=2,
+       ) ->pc_boruta
+
+plot(pc_boruta,las=2,cex.axis=0.5)
+pc_boruta
+pc_boruta$finalDecision
+```
+
+## Naive Bayes Classifier
+
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+
+cl <- makePSOCKcluster(10)
+registerDoParallel(cl)
+set.seed(825)
+rf_fit <- train(Folkmedicine ~ ., data = rfdata, 
+                 method = "naive_bayes", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+
+stopCluster(cl)
+varImp(rf_fit)
 ```
