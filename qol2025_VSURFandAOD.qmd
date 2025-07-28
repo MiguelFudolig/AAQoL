@@ -22,6 +22,7 @@ library(Boruta)
 library(doParallel)
 library(Hmisc)
 library(mlbench)
+library(pROC)
 ```
 
 
@@ -52,6 +53,8 @@ qol |> DT::datatable()
 
 # Unmet Health Need
 
+
+
 ## VSURF Approach
 
 ::: callout-important
@@ -63,15 +66,39 @@ rfdata <- qol |> select(`Unmet Health Need`,Ethnicity, Age, Gender,Religion, `Fu
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
+```
 
-imbal <- ROSE::ROSE(Unmet.Health.Need~.,
-                          data=rfdata,
-                          seed=3)$data
+```{r}
+rfdata |> gtsummary::tbl_summary(include=Unmet.Health.Need)
+```
 
-# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
-# VSURF(Unmet.Health.Need~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
 
-VSURF(Unmet.Health.Need~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+training_prop <- 0.8
+set.seed(14)
+train_index <- createDataPartition(y=rfdata$Unmet.Health.Need,
+                                   p=training_prop,
+                                   list=F)
+
+training_set <- rfdata[train_index,]
+test_set <- rfdata[-train_index,]
+
+training_set |> gtsummary::tbl_summary(include=Unmet.Health.Need)
+test_set |> gtsummary::tbl_summary(include=Unmet.Health.Need)
+
+n_minority <- training_set |> filter(Unmet.Health.Need=="Yes")|> nrow()
+
+rf_options_for_vsurf <- list(
+  sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
+  strata = training_set[,1],                     # Stratify by the response variable
+  importance = TRUE                     # Ensure importance is calculated
+)
+
+VSURF(Unmet.Health.Need~.,
+      training_set,
+      na.action="na.omit",
+      parallel=T,verbose=F,
+      rf.options=rf_options_for_vsurf)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -114,14 +141,18 @@ all_formula <- Unmet.Health.Need~.
 pred_vars <- names(rfdata[,-1])[vsurf.mod$varselect.interp]
 
 
-pred_vars <- ifelse("Ethnicity" %in% pred_vars, pred_vars,c(pred_vars,"Ethnicity"))
+pred_vars <- if("Ethnicity" %in% pred_vars){
+  pred_vars
+} else {
+  c(pred_vars,"Ethnicity")
+  }
 mod_form <- reformulate(pred_vars, response="Unmet.Health.Need")
 
 mod_form_noEth <- reformulate(pred_vars[!pred_vars %in%c("Ethnicity")], response="Unmet.Health.Need")
 
-options(contrasts = c("contr.treatment","contr.poly"))
-mod1 <- glm(mod_form, family="binomial", data=rfdata)
-mod2 <- glm(mod_form_noEth, family="binomial", data=rfdata)
+options(contrasts = c("contr.sum","contr.poly"))
+mod1 <- glm(mod_form, family="binomial", data=training_set)
+mod2 <- glm(mod_form_noEth, family="binomial", data=training_set)
 anova(mod2,mod1)
 
 performance::check_model(mod1)
@@ -130,11 +161,127 @@ data.frame(BIC_ethnicity = BIC(mod1),
 
 car::Anova(mod1, test.statistic = "F")
 summary(mod1)
+
+mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
+```
+### Test Set Prediction with Ethnicity
+
+```{r}
+predictions <- mod1 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Unmet.Health.Need,predictions)
+ROC
+ROC |> plot()
+
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Unmet.Health.Need,responsepredictions,positive="Yes")
+```
+### Test Set Prediction without Ethnicity
+
+```{r}
+predictions <- mod2 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Unmet.Health.Need,predictions)
+ROC
+ROC |> plot()
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Unmet.Health.Need,responsepredictions,positive="Yes")
+```
+
+## LOOCV approach
+
+```{r}
+unregister_dopar <- function() {
+  env <- foreach:::.foreachGlobals
+  rm(list=ls(name=env), pos=env)
+}
+unregister_dopar()
 ```
 
 
 
 
+### With ethnicity
+
+
+```{r}
+
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Unmet.Health.Need, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Unmet.Health.Need ~ ., data = tr,
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Unmet.Health.Need)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc
+ CV_glmnet_Acc
+```
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Unmet.Health.Need~., data = rfdata, method = "rf", trControl = ctrl)
+summary(model)
+model |> print()
+```
+
+### No ethnicity
+
+```{r}
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Unmet.Health.Need, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Unmet.Health.Need ~ ., data = tr|> dplyr::select(-Ethnicity),
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Unmet.Health.Need)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc_NoEth
+CV_glmnet_Acc_NoEth
+```
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Unmet.Health.Need~., data = rfdata|> dplyr::select(-Ethnicity), method = "rf", trControl = ctrl)
+model |> print()
+```
 
 
 # Unmet Dental Need
@@ -147,15 +294,38 @@ rfdata <- qol |> select(`Unmet Dental Needs`,Ethnicity, Age, Gender,Religion, `F
   as.data.frame() |> 
   rename_with(make.names)
 
-# imbal <- ROSE::ROSE(Unmet.Health.Need~.,
-#                           data=rfdata,
-#                           seed=3)$data
+```
 
-# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
-# VSURF(Unmet.Health.Need~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+rfdata |> gtsummary::tbl_summary(include=Unmet.Dental.Needs)
+```
 
-VSURF(Unmet.Dental.Needs~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+training_prop <- 0.8
+set.seed(14)
+train_index <- createDataPartition(y=rfdata$Unmet.Dental.Needs,
+                                   p=training_prop,
+                                   list=F)
 
+training_set <- rfdata[train_index,]
+test_set <- rfdata[-train_index,]
+
+training_set |> gtsummary::tbl_summary(include=Unmet.Dental.Needs)
+test_set |> gtsummary::tbl_summary(include=Unmet.Dental.Needs)
+
+n_minority <- training_set |> filter(Unmet.Dental.Needs=="Yes")|> nrow()
+
+rf_options_for_vsurf <- list(
+  sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
+  strata = training_set[,1],                     # Stratify by the response variable
+  importance = TRUE                     # Ensure importance is calculated
+)
+
+VSURF(Unmet.Dental.Needs~.,
+      training_set,
+      na.action="na.omit",
+      parallel=T,verbose=F,
+      rf.options=rf_options_for_vsurf)->vsurf.mod
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
 names(rfdata[,-1])[vsurf.mod$varselect.interp]
@@ -210,11 +380,121 @@ data.frame(BIC_ethnicity = BIC(mod1),
            BIC_noethnicity=BIC(mod2))
 
 summary(mod1)
+mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
 ```
 
 ::: callout-note
 The non-significant analysis of deviance implies that Ethnicity might not be a significant predictor of unmet dental needs.
 :::
+
+### Test Set Prediction with Ethnicity
+
+```{r}
+predictions <- mod1 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Unmet.Dental.Needs,predictions)
+ROC
+ROC |> plot()
+
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Unmet.Dental.Needs,responsepredictions,positive="Yes")
+```
+
+
+
+### Test Set Prediction without Ethnicity
+
+```{r}
+predictions <- mod2 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Unmet.Dental.Needs,predictions)
+ROC
+ROC |> plot()
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Unmet.Dental.Needs,responsepredictions,positive="Yes")
+```
+
+## LOOCV approach
+
+
+
+### With ethnicity
+
+```{r}
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Unmet.Dental.Needs, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Unmet.Dental.Needs ~ ., data = tr,
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Unmet.Dental.Needs)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc
+CV_glmnet_Acc
+```
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Unmet.Dental.Needs~., data = rfdata, method = "rf", trControl = ctrl)
+summary(model)
+model |> print()
+```
+
+### No ethnicity
+
+```{r}
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Unmet.Dental.Needs, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Unmet.Dental.Needs ~ ., data = tr|> dplyr::select(-Ethnicity),
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Unmet.Dental.Needs)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc_NoEth
+CV_glmnet_Acc_NoEth
+```
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Unmet.Dental.Needs~., data = rfdata|> dplyr::select(-Ethnicity), method = "rf", trControl = ctrl)
+model |> print()
+```
 
 # Physical Check-up
 
@@ -231,15 +511,38 @@ rfdata <- qol |>
   as.data.frame() |> 
   rename_with(make.names)
 
-# imbal <- ROSE::ROSE(Physical.Check.up~.,
-#                           data=rfdata,
-#                           seed=3)$data
-# 
-# VSURF(Physical.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
-# VSURF(Physical.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```
 
-VSURF(Physical.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+rfdata |> gtsummary::tbl_summary(include=Physical.Check.up)
+```
 
+```{r}
+training_prop <- 0.8
+set.seed(14)
+train_index <- createDataPartition(y=rfdata$Physical.Check.up,
+                                   p=training_prop,
+                                   list=F)
+
+training_set <- rfdata[train_index,]
+test_set <- rfdata[-train_index,]
+
+training_set |> gtsummary::tbl_summary(include=Physical.Check.up)
+test_set |> gtsummary::tbl_summary(include=Physical.Check.up)
+
+n_minority <- training_set |> filter(Physical.Check.up=="0")|> nrow()
+
+rf_options_for_vsurf <- list(
+  sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
+  strata = training_set[,1],                     # Stratify by the response variable
+  importance = TRUE                     # Ensure importance is calculated
+)
+
+VSURF(Physical.Check.up~.,
+      training_set,
+      na.action="na.omit",
+      parallel=T,verbose=F,
+      rf.options=rf_options_for_vsurf)->vsurf.mod
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
 names(rfdata[,-1])[vsurf.mod$varselect.interp]
@@ -291,6 +594,115 @@ data.frame(BIC_ethnicity = BIC(mod1),
            BIC_noethnicity=BIC(mod2))
 
 summary(mod1)
+
+mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
+```
+### Test Set Prediction with Ethnicity
+
+```{r}
+predictions <- mod1 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Physical.Check.up,predictions)
+ROC
+ROC |> plot()
+
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Physical.Check.up,responsepredictions,positive="Yes")
+```
+
+### Test Set Prediction without Ethnicity
+
+```{r}
+predictions <- mod2 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Physical.Check.up,predictions)
+ROC
+ROC |> plot()
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Physical.Check.up,responsepredictions,positive="Yes")
+```
+
+## LOOCV approach
+
+
+
+### With ethnicity
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Physical.Check.up~., data = rfdata, method = "rf", trControl = ctrl)
+summary(model)
+model |> print()
+```
+
+```{r}
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Physical.Check.up, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Physical.Check.up ~ ., data = tr,
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Physical.Check.up)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc
+CV_glmnet_Acc
+```
+
+### No ethnicity
+
+```{r}
+unregister_dopar()
+outer_folds <- createFolds(rfdata$Physical.Check.up, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Physical.Check.up ~ ., data = tr|> dplyr::select(-Ethnicity),
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Physical.Check.up)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc_NoEth
+CV_glmnet_Acc_NoEth
+```
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Physical.Check.up~., data = rfdata|> dplyr::select(-Ethnicity), method = "rf", trControl = ctrl)
+model |> print()
 ```
 
 # Dental Check-up
@@ -307,15 +719,38 @@ rfdata <- qol |>
          EnglishDiff=`English Difficulties`) |> 
   as.data.frame() |> 
   rename_with(make.names)
+```
 
-# imbal <- ROSE::ROSE(Physical.Check.up~.,
-#                           data=rfdata,
-#                           seed=3)$data
-# 
-# VSURF(Physical.Check.up~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
-# VSURF(Physical.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+rfdata |> gtsummary::tbl_summary(include=Dentist.Check.up)
+```
 
-VSURF(Dentist.Check.up~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+training_prop <- 0.8
+set.seed(14)
+train_index <- createDataPartition(y=rfdata$Dentist.Check.up,
+                                   p=training_prop,
+                                   list=F)
+
+training_set <- rfdata[train_index,]
+test_set <- rfdata[-train_index,]
+
+training_set |>  gtsummary::tbl_summary(include=Dentist.Check.up)
+test_set |>  gtsummary::tbl_summary(include=Dentist.Check.up)
+
+n_minority <- training_set |> filter(Dentist.Check.up=="0") |> nrow()
+
+rf_options_for_vsurf <- list(
+  sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
+  strata = training_set[,1],                     # Stratify by the response variable
+  importance = TRUE                     # Ensure importance is calculated
+)
+
+VSURF(Dentist.Check.up~.,
+      training_set,
+      na.action="na.omit",
+      parallel=T,verbose=F,
+      rf.options=rf_options_for_vsurf)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -368,24 +803,132 @@ data.frame(BIC_ethnicity = BIC(mod1),
            BIC_noethnicity=BIC(mod2))
 
 summary(mod1)
+mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff", type="response") |> summary(infer=T)
 ```
+
+### Test Set Prediction with Ethnicity
+
+```{r}
+predictions <- mod1 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Dentist.Check.up,predictions)
+ROC
+ROC |> plot()
+
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Dentist.Check.up,responsepredictions,positive="Yes")
+```
+
+### Test Set Prediction without Ethnicity
+
+```{r}
+predictions <- mod2 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Dentist.Check.up,predictions)
+ROC
+ROC |> plot()
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Dentist.Check.up,responsepredictions,positive="Yes")
+```
+
+## LOOCV approach
+
+```{r}
+outer_folds <- createFolds(rfdata$Dentist.Check.up, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Dentist.Check.up ~ ., data = tr,
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Dentist.Check.up)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc
+```
+
+### With ethnicity
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Dentist.Check.up~., data = rfdata, method = "rf", trControl = ctrl)
+summary(model)
+model |> print()
+```
+
+### No ethnicity
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Dentist.Check.up~., data = rfdata|> dplyr::select(-Ethnicity), method = "rf", trControl = ctrl)
+model |> print()
+```
+
 # Folk medicine
 
-## VSURM
+## VSURF
 ```{r}
 rfdata <- qol |> select(`Folkmedicine`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
 
-# imbal <- ROSE::ROSE(Folkmedicine~.,
-#                           data=rfdata,
-#                           seed=3)$data
+```
 
-# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
-# VSURF(Folkmedicine~.,imbal,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+rfdata |> gtsummary::tbl_summary(include=Folkmedicine)
+```
 
-VSURF(Folkmedicine~.,rfdata,na.action="na.omit",parallel=T,verbose=F)->vsurf.mod
+```{r}
+training_prop <- 0.8
+set.seed(14)
+train_index <- createDataPartition(y=rfdata$Folkmedicine,
+                                   p=training_prop,
+                                   list=F)
+
+training_set <- rfdata[train_index,]
+test_set <- rfdata[-train_index,]
+
+training_set |> gtsummary::tbl_summary(include=Folkmedicine)
+test_set |> gtsummary::tbl_summary(include=Folkmedicine)
+
+n_minority <- training_set |> filter(Folkmedicine=="Yes") |> nrow()
+
+rf_options_for_vsurf <- list(
+  sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
+  strata = training_set[,1],                     # Stratify by the response variable
+  importance = TRUE                     # Ensure importance is calculated
+)
+
+VSURF(Folkmedicine~.,
+      training_set,
+      na.action="na.omit",
+      parallel=T,
+      verbose=F,
+      rf.options=rf_options_for_vsurf)->vsurf.mod
 
 vsurf.mod |> summary()
 names(rfdata[,-1])[vsurf.mod$varselect.pred]
@@ -438,4 +981,87 @@ data.frame(BIC_ethnicity = BIC(mod1),
            BIC_noethnicity=BIC(mod2))
 
 summary(mod1)
+
+mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff", type="response") |> summary(infer=T)
+```
+
+### Test Set Prediction with Ethnicity
+
+```{r}
+predictions <- mod1 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Folkmedicine,predictions)
+ROC
+ROC |> plot()
+
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Folkmedicine,responsepredictions,positive="Yes")
+```
+
+### Test Set Prediction without Ethnicity
+
+```{r}
+predictions <- mod2 |> predict(newdata=test_set,type="response")
+ROC <- roc(test_set$Folkmedicine,predictions)
+ROC
+ROC |> plot()
+```
+
+```{r}
+threshold <- ROC  |> coords("best", ret = "threshold", best.method = "youden") |> as.numeric()
+threshold
+responsepredictions <- ifelse(predictions > threshold, "Yes","0") |> factor(levels=c("0","Yes"))
+confusionMatrix(test_set$Folkmedicine,responsepredictions,positive="Yes")
+```
+
+## LOOCV approach
+
+```{r}
+outer_folds <- createFolds(rfdata$Folkmedicine, k = 5)
+
+boot <- trainControl(method = "boot",
+                     number = 100)
+
+CV_glm <- lapply(outer_folds, function(index){
+  tr <- rfdata[-index, ]
+  ts <- rfdata[index,]
+  
+  cart1 <- train(Folkmedicine ~ ., data = tr,
+                 method = "glm",
+                 metric = "Accuracy",
+                 trControl = boot,
+                 tuneLength = 2) #to keep it short we will just probe 10 combinations of hyper parameters
+  
+  postResample(predict(cart1, ts), ts$Folkmedicine)
+})
+
+sapply(CV_glm, function(x) x[1]) -> CV_glmnet_Acc
+```
+
+### With ethnicity
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Folkmedicine~., data = rfdata, method = "rf", trControl = ctrl)
+summary(model)
+model |> print()
+```
+
+### No ethnicity
+
+
+```{r}
+unregister_dopar()
+ctrl <- trainControl(method="cv")
+
+model <- train(Folkmedicine~., data = rfdata|> dplyr::select(-Ethnicity), method = "rf", trControl = ctrl)
+model |> print()
 ```
