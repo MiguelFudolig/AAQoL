@@ -48,8 +48,16 @@ qol <- read_csv("AAQoL.csv") |> mutate(across(where(is.character), ~as.factor(.x
          across(`Identify Ethnically`,~factor(.x,levels=c("Not at all","Not very close","Somewhat close","Very close"))),
          across(`Belonging`,~factor(.x,levels=c("Not at all","Not very much","Somewhat","Very much"))),
          `Primary Language` = as.factor(`Primary Language`))
+
 qol |> DT::datatable()
 ```
+
+## Standardizing Age, Duration of Residency, and 
+
+```{r}
+qol <- qol |> mutate(across(c(Age,`Duration of Residency`,`Education Completed`),~scale(.x)))
+```
+
 
 # Unmet Health Need
 
@@ -62,7 +70,7 @@ We will be using the Prediction Set to run an analysis of deviance to check mode
 :::
 
 ```{r}
-rfdata <- qol |> select(`Unmet Health Need`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+rfdata <- qol |> select(`Unmet Health Need`,Ethnicity, Age, Gender,Religion,`Marital Status`, `Full Time Employment`:Retired,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -82,7 +90,7 @@ rf_options_for_vsurf <- list(
   strata = rfdata[,1],                     # Stratify by the response variable
   importance = TRUE                     # Ensure importance is calculated
 )
-
+set.seed(123321)
 VSURF(Unmet.Health.Need~.,
       rfdata,
       na.action="na.omit",
@@ -127,7 +135,7 @@ ggsave(filename = "FinalFigures/VSURF_importance_unmethealth.png", width=6, heig
 ```{r}
 
 all_formula <- Unmet.Health.Need~.
-pred_vars <- names(rfdata[,-1])[vsurf.mod$varselect.interp]
+pred_vars <- names(rfdata[,-1])[vsurf.mod$varselect.pred]
 
 
 pred_vars <- if("Ethnicity" %in% pred_vars){
@@ -152,7 +160,7 @@ car::Anova(mod1, test.statistic = "F")
 summary(mod1)
 
 mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
-mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff") |> summary(infer=T)
 ```
 
 # Unmet Dental Need
@@ -160,7 +168,7 @@ mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
 ## VSURF Approach
 
 ```{r}
-rfdata <- qol |> select(`Unmet Dental Needs`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+rfdata <- qol |> select(`Unmet Dental Needs`,Ethnicity, Age, Gender,Religion,`Marital Status`, `Full Time Employment`:Retired,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -172,13 +180,8 @@ rfdata |> gtsummary::tbl_summary(include=Unmet.Dental.Needs)
 ```
 
 ```{r}
-
-
-rfdata |> gtsummary::tbl_summary(include=Unmet.Dental.Needs)
-
-
 n_minority <- rfdata |> filter(Unmet.Dental.Needs=="Yes")|> nrow()
-
+set.seed(123321)
 rf_options_for_vsurf <- list(
   sampsize = c(n_minority, n_minority), # Sample 'n_minority' from each class
   strata = rfdata[,1],                     # Stratify by the response variable
@@ -231,7 +234,7 @@ Dental Insurance is the only variable in the Prediction Set, which means Ethnici
 
 ```{r}
 
-pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.interp],"Ethnicity")
+pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.pred],"Ethnicity")
 mod_form <- reformulate(pred_vars, response="Unmet.Dental.Needs")
 
 mod_form_noEth <- reformulate(pred_vars[!pred_vars %in%c("Ethnicity")], response="Unmet.Dental.Needs")
@@ -245,7 +248,7 @@ data.frame(BIC_ethnicity = BIC(mod1),
 
 summary(mod1)
 mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
-mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")|> summary(infer=T)
 ```
 
 ::: callout-note
@@ -259,7 +262,7 @@ The non-significant analysis of deviance implies that Ethnicity might not be a s
 ```{r}
 
 rfdata <- qol |> 
-  select(`Physical Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  select(`Physical Check-up`,Ethnicity, Age, Gender,Religion,`Marital Status`, `Full Time Employment`:Retired,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -274,9 +277,6 @@ rfdata |> gtsummary::tbl_summary(include=Physical.Check.up)
 ```
 
 ```{r}
-rfdata |> gtsummary::tbl_summary(include=Physical.Check.up)
-
-
 n_minority <- rfdata |> filter(Physical.Check.up=="0")|> nrow()
 
 rf_options_for_vsurf <- list(
@@ -285,6 +285,8 @@ rf_options_for_vsurf <- list(
   importance = TRUE                     # Ensure importance is calculated
 )
 
+set.seed(123321)
+set.seed(123321)
 VSURF(Physical.Check.up~.,
       rfdata,
       na.action="na.omit",
@@ -328,7 +330,7 @@ ggsave(filename = "FinalFigures/VSURF_importance_PC.png", width=6, height=4.5,un
 
 ```{r}
 
-pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.interp],"Ethnicity")
+pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.pred],"Ethnicity")
 mod_form <- reformulate(pred_vars, response="Physical.Check.up")
 
 mod_form_noEth <- reformulate(pred_vars[!pred_vars %in%c("Ethnicity")], response="Physical.Check.up")
@@ -343,7 +345,7 @@ data.frame(BIC_ethnicity = BIC(mod1),
 summary(mod1)
 
 mod1 |>  emmeans::emmeans(~Ethnicity, type="response")
-mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
+mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")|> summary(infer=T)
 ```
 
 # Dental Check-up
@@ -353,7 +355,7 @@ mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff")
 ```{r}
 
 rfdata <- qol |> 
-  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) %>%
+  select(`Dentist Check-up`,Ethnicity, Age, Gender,Religion,`Marital Status`, `Full Time Employment`:Retired,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
   na.omit() |> 
   rename(Employment=`Full Time Employment`,
          EnglishSpeak=`English Speaking`,
@@ -367,9 +369,6 @@ rfdata |> gtsummary::tbl_summary(include=Dentist.Check.up)
 ```
 
 ```{r}
-rfdata |>  gtsummary::tbl_summary(include=Dentist.Check.up)
-
-
 n_minority <- rfdata |> filter(Dentist.Check.up=="0") |> nrow()
 
 rf_options_for_vsurf <- list(
@@ -378,6 +377,7 @@ rf_options_for_vsurf <- list(
   importance = TRUE                     # Ensure importance is calculated
 )
 
+set.seed(123321)
 VSURF(Dentist.Check.up~.,
       rfdata,
       na.action="na.omit",
@@ -422,7 +422,7 @@ ggsave(filename = "FinalFigures/VSURF_importance_DC.png", width=6, height=4.5,un
 
 ```{r}
 
-pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.interp],"Ethnicity")
+pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.pred],"Ethnicity")
 mod_form <- reformulate(pred_vars, response="Dentist.Check.up")
 
 mod_form_noEth <- reformulate(pred_vars[!pred_vars %in%c("Ethnicity")], response="Dentist.Check.up")
@@ -444,7 +444,7 @@ mod1 |>  emmeans::emmeans(~Ethnicity) |> emmeans::contrast(method="eff", type="r
 
 ## VSURF
 ```{r}
-rfdata <- qol |> select(`Folkmedicine`,Ethnicity, Age, Gender,Religion, `Full Time Employment`,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
+rfdata <- qol |> select(`Folkmedicine`,Ethnicity, Age, Gender,Religion,`Marital Status`, `Full Time Employment`:Retired,  Income_median, `US Born`:`Discrimination`,`Health Insurance`,`Dental Insurance`) |> 
     na.omit() |>
   as.data.frame() |> 
   rename_with(make.names)
@@ -456,9 +456,6 @@ rfdata |> gtsummary::tbl_summary(include=Folkmedicine)
 ```
 
 ```{r}
-rfdata |> gtsummary::tbl_summary(include=Folkmedicine)
-
-
 n_minority <- rfdata |> filter(Folkmedicine=="Yes") |> nrow()
 
 rf_options_for_vsurf <- list(
@@ -466,6 +463,8 @@ rf_options_for_vsurf <- list(
   strata = rfdata[,1],                     # Stratify by the response variable
   importance = TRUE                     # Ensure importance is calculated
 )
+
+set.seed(123321)
 
 VSURF(Folkmedicine~.,
       rfdata,
@@ -512,7 +511,7 @@ ggsave(filename = "FinalFigures/VSURF_importance_AltMedicine.png", width=6, heig
 
 ```{r}
 
-pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.interp])
+pred_vars <- c(names(rfdata[,-1])[vsurf.mod$varselect.pred])
 mod_form <- reformulate(pred_vars, response="Folkmedicine")
 
 mod_form_noEth <- reformulate(pred_vars[!pred_vars %in%c("Ethnicity")], response="Folkmedicine")
